@@ -1,0 +1,15 @@
+[package]
+name = "latency"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rusb = { path = "../../../rusb-wasi" }
+libc = "0.2"
+
+[[bin]]
+name = "latency"
+path = "src/main.rs"

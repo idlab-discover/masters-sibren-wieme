@@ -1,0 +1,19 @@
+[package]
+name = "throughput"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rusb = { path = "../../../rusb-wasi" }
+fatfs = "0.3"
+mbrman = "0.5"
+fscommon = "0.1"
+thiserror = "1.0"
+rand = "0.8"
+
+[[bin]]
+name = "throughput"
+path = "src/main.rs"
