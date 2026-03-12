@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/libusb-vanilla" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/libusb-wasi" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/rusb-wasi" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/rusb-wasi/libusb1-sys/libusb" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/usb-wasm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/usb-wasm/rusb-wasi" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/usb-wasm/rusb-wasi/libusb1-sys/libusb" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/wasi-usb" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/wasi-usb/libusb" vcs="Git" />
+  </component>
+</project>
