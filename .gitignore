@@ -7,6 +7,10 @@ benchmarks/results
 # ── Pico ─────────────────────────────────────────────────────────────────────
 pico_firmware/
 
+# ── Nokhwa ───────────────────────────────────────────────────────────────────
+nokhwa-test/target/
+nokhwa-test/Cargo.lock
+
 # ── General ──────────────────────────────────────────────────────────────────
 *.log
 *.out
@@ -15,3 +19,4 @@ pico_firmware/
 *.png
 *.uf2
 .DS_Store
+.idea/
