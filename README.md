@@ -11,6 +11,30 @@ The project consists of several interconnected repositories (configured as Git s
 - **[rusb-wasi](./rusb-wasi/)**: A Rust wrapper for `libusb-wasi`. It allows Rust applications to be compiled to WebAssembly (`wasm32-wasip2`) while safely linking against the Wasm-compatible `libusb`.
 - **[benchmarks](./benchmarks/)**: Latency and throughput evaluation scripts and code (both C and Rust) to measure the performance overhead of WebAssembly USB access compared to native binaries.
 
+## YOLO CV Demo
+The project includes a Computer Vision demonstration using YOLOv8 for real-time object detection.
+
+### Build Instructions
+To build the YOLO detector component:
+```bash
+cd usb-wasm/command-components/yolo-detector
+cargo component build --release
+```
+
+### Running the Demo
+Run the host with the YOLO component enabled:
+```bash
+sudo cargo run --release --manifest-path wasi-usb/usb-wasi-host/Cargo.toml -- \
+    --component-path usb-wasm/command-components/yolo-detector/target/wasm32-wasip2/release/yolo_detector.component.wasm \
+    --enable-yolo -- <path_to_yolov8n.onnx>
+```
+
+### Benchmarking
+To run the YOLO performance benchmark (latency and resource tracking):
+```bash
+sudo ./benchmarks/run_benchmarks.sh --yolo
+```
+
 ## Relationship Map
 
 ```mermaid
