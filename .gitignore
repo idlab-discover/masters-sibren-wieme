@@ -20,3 +20,4 @@ nokhwa-test/Cargo.lock
 *.uf2
 .DS_Store
 .idea/
+docs/

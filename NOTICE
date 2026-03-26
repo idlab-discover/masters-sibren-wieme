@@ -1,0 +1,11 @@
+# NOTICE
+
+This project, "Safe and Portable USB Access in WebAssembly for IoT/CPS", includes both original research/code and derived work.
+
+## WASI-USB Infrastructure
+The core WASI-USB runtime (`wasi-usb/`), the `libusb-wasi` backend, and the `usb-wasm` component structure are based on the WASI-USB specification and reference implementations developed by the WASI community and hosted by the Bytecode Alliance. These components are licensed under their respective original licenses (typically Apache License, Version 2.0 or LGPL 2.1).
+
+## Computer Vision & YOLO Detector
+The Computer Vision interfaces (`cv.wit`, `cv-ui.wit`), the YOLOv8 detector components (`usb-wasm/command-components/yolo-detector/`), the host-side CV/UI implementations (`wasi-usb/usb-wasi-host/src/main.rs`), and the benchmarking scripts (`benchmarks/`) are the original work of Sibren Wieme. These specific components are licensed under the MIT License, which can be found in the root `LICENSE` file.
+
+Copyright (c) 2026 Sibren Wieme. All rights reserved.
