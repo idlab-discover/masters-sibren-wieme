@@ -1,23 +1,37 @@
-# ── Archive ───────────────────────────────────────────────────────────────────
-archive
-
-# ── Benchmarks ───────────────────────────────────────────────────────────────
-benchmarks/results
-
-# ── Pico ─────────────────────────────────────────────────────────────────────
-pico_firmware/
-
-# ── Nokhwa ───────────────────────────────────────────────────────────────────
-nokhwa-test/target/
-nokhwa-test/Cargo.lock
-
-# ── General ──────────────────────────────────────────────────────────────────
+# ── Archive & Logs ───────────────────────────────────────────────────────────
+archive/
 *.log
 *.out
 *.bin
 *.csv
 *.png
 *.uf2
+
+# ── Project Specific ──────────────────────────────────────────────────────────
+nokhwa-test/
+pico_firmware/
+benchmarks/results/
+usb-wasm/out/
+wasi-usb/wkg.lock
+
+# ── Rust ──────────────────────────────────────────────────────────────────────
+target/
+**/*/target/
+Cargo.lock
+**/*/Cargo.lock
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
 .DS_Store
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+# docs/ is currently in the root, if it's generated it stays ignored
+# but if it's manually written we should track it. 
+# For now, following original:
 docs/
+build_release/

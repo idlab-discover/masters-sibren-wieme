@@ -93,9 +93,53 @@ run_throughput_wasi() {
     done
 }
 
+run_yolo_benchmark() {
+    local wasm="$PROJECT_ROOT/usb-wasm/command-components/yolo-detector/target/wasm32-wasip2/release/yolo_detector.component.wasm"
+    local model_path="${YOLO_MODEL_PATH:-$PROJECT_ROOT/yolov8n.onnx}"
+    
+    echo "=== YOLO Benchmark ==="
+    mkdir -p "$RESULTS_DIR"
+    
+    if [ ! -f "$wasm" ]; then
+        echo "Error: YOLO component not found at $wasm. Run 'cargo component build --release' in the component directory."
+        return 1
+    fi
+
+    local log_file="$RESULTS_DIR/yolo_host.log"
+    echo "Running host with YOLO component... (Model: $model_path)"
+    
+    # Run host in background
+    sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
+        --component-path "$wasm" --enable-yolo -- "$model_path" > "$log_file" 2>&1 &
+    HOST_PID=$!
+    
+    # Start resource tracker
+    "$SCRIPT_DIR/yolo_resource_tracker.sh" "$HOST_PID" "$RESULTS_DIR/yolo_resources.csv" &
+    TRACKER_PID=$!
+    
+    echo "Host PID: $HOST_PID, Tracker PID: $TRACKER_PID"
+    echo "Benchmark running... (will stop when host exits or after timeout)"
+    
+    # Give it some time to run if it doesn't exit automatically (it's a stream)
+    # For a benchmark, we might want to run for N seconds then kill it
+    sleep 30
+    sudo kill $HOST_PID 2>/dev/null || true
+    wait $HOST_PID 2>/dev/null || true
+    kill $TRACKER_PID 2>/dev/null || true
+    
+    # Extract latency
+    grep "Inference took:" "$log_file" | sed 's/.*Inference took: //; s/ms//' > "$RESULTS_DIR/yolo_latency.csv"
+    echo "YOLO results saved to $RESULTS_DIR/yolo_latency.csv and yolo_resources.csv"
+}
+
 
 # ── Mode ───────────────────────────────────────────────────────────────────────
 MODE="${1:---all}"
+
+# ── YOLO benchmark ─────────────────────────────────────────────────────────────
+if [[ "$MODE" == "--yolo" || "$MODE" == "--all" ]]; then
+    run_yolo_benchmark
+fi
 
 # ── Latency benchmarks ─────────────────────────────────────────────────────────
 if [[ "$MODE" == "--latency" || "$MODE" == "--all" ]]; then
