@@ -1,4 +1,5 @@
-# Safe and Portable USB Access in WebAssembly for IoT/CPS
+# Secure USB Access in WebAssembly: A Capability-Based Framework for Cyber-Physical IoT
+### Veilige USB-toegang in WebAssembly: een capability-gebaseerd raamwerk voor cyber-fysieke IoT-toepassingen
 
 This repository contains the source code, submodules, and documentation for a Master's Thesis focused on bringing safe, portable, and capability-based USB hardware access to WebAssembly (Wasm) via the **WASI-USB** interface.
 
@@ -42,11 +43,11 @@ graph TD
 
 ## Hardware & Software Support
 
-| Platform | Architecture | Reference Hardware | Status |
-|----------|--------------|--------------------|--------|
-| macOS    | aarch64      | Apple Silicon (M-series) | Supported |
-| Linux    | x86_64       | Generic Workstation | Supported |
-| Linux    | aarch64      | Raspberry Pi 4/5   | Supported |
+| Platform | Architecture | Reference Hardware |
+|----------|--------------|--------------------|
+| macOS    | aarch64      | Apple Silicon (M-series) |
+| Linux    | x86_64       | Generic Workstation |
+| Linux    | aarch64      | Raspberry Pi 4/5   |
 
 ## Getting Started
 
