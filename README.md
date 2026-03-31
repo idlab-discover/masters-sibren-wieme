@@ -2,7 +2,7 @@
 
 This repository contains the source code, submodules, and documentation for a Master's Thesis focused on bringing safe, portable, and capability-based USB hardware access to WebAssembly (Wasm) via the **WASI-USB** interface.
 
-Original research and implementation are the work of **IDLab Discover**.
+Original research and implementation are the work of the **contributors**!
 
 ## Project Overview
 
@@ -44,9 +44,9 @@ graph TD
 
 | Platform | Architecture | Reference Hardware | Status |
 |----------|--------------|--------------------|--------|
-| macOS    | aarch64      | Apple Silicon (M-series) | Verified |
-| Linux    | x86_64       | Generic Workstation | Verified |
-| Linux    | aarch64      | Raspberry Pi 4/5   | Verified |
+| macOS    | aarch64      | Apple Silicon (M-series) | Supported |
+| Linux    | x86_64       | Generic Workstation | Supported |
+| Linux    | aarch64      | Raspberry Pi 4/5   | Supported |
 
 ## Getting Started
 
@@ -132,4 +132,4 @@ This project is dual-licensed:
 - **Infrastructure**: Components derived from the WASI community are subject to their original licenses (Apache 2.0 or LGPL).
 - **Original Research**: All original work (CV interfaces, YOLO detector, host-side CV logic, and benchmarks) is licensed under the **MIT License**.
 
-Copyright (c) 2026 IDLab Discover. All rights reserved.
+Copyright (c) 2026 the contributors. All rights reserved.
