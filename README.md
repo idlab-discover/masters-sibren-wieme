@@ -66,17 +66,17 @@ cargo build --release
 
 ## Running the Demos
 
-### 1. Real-time YOLOv8 Object Detection
-This demo showcases high-performance object detection running in a sandboxed Wasm environment with periodic frame annotation and filesystem persistence.
+### 1. Real-time YOLOv8 Object Detection (Terminal)
+This demo showcases high-performance object detection running in a sandboxed Wasm environment. Detections and inference timing are printed to the terminal.
 
 ```bash
-# Build the YOLO detector component
-cd usb-wasm/command-components/yolo-detector
-cargo component build --release
+# Build the YOLO components and compose them
+cd usb-wasm
+just build-yolo-terminal-composed
 
-# Run the host with the YOLO component (Sudo required for USB access)
-sudo ../../../target/release/usb-wasi-host \
-    --component-path target/wasm32-wasip2/release/yolo_detector.component.wasm \
+# Run the host with the composed YOLO component (Sudo required for USB access)
+sudo ../wasi-usb/target/release/usb-wasi-host \
+    --component-path out/yolo-terminal-composed.wasm \
     --enable-yolo -- yolov8n.onnx
 ```
 
@@ -107,6 +107,9 @@ cd benchmarks
 ./run_benchmarks.sh
 ```
 See the [benchmarks/README.md](./benchmarks/README.md) for detailed analysis of the performance results.
+
+> [!TIP]
+> If `just` is not in your `PATH`, you can use the absolute path (typically `/opt/homebrew/bin/just` on macOS) or install it via `brew install just`.
 
 ## Utility Tools
 

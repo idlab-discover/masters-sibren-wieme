@@ -6,6 +6,9 @@ archive/
 *.csv
 *.png
 *.uf2
+perf.data*
+flamegraph.svg
+build_errors*.txt
 
 # ── Project Specific ──────────────────────────────────────────────────────────
 nokhwa-test/
