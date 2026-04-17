@@ -1,80 +1,160 @@
 #!/bin/bash
-# run_benchmarks.sh — Voer alle benchmarks uit en sla resultaten op in benchmarks/results/
+# run_benchmarks.sh — Voert alle benchmarks uit en slaat resultaten op in benchmarks/results/
 #
 # Gebruik (vanuit projectroot):
-#   sudo ./benchmarks/run_benchmarks.sh [--latency | --throughput | --all]
+#   sudo ./benchmarks/run_benchmarks.sh [--latency | --throughput | --init | --streams | --yolo | --all]
 #
 # Standaard: --all
+#
+# Benchmarks:
+#   --latency     Ping-pong RTT via Pico 2 loopback (USB 2.0 Full Speed).
+#   --throughput  MSC read/write via SanDisk USB 3.0 stick (SuperSpeed).
+#   --init        Tijd voor libusb_init + enumerate + open + claim (cold start).
+#   --streams     USB 3.0 Bulk Streams validatie (alloc_streams + stream-bulk xfer).
+#   --yolo        Webcam→YOLO end-to-end + host-side CPU/RSS tracking.
+#
+# Resultaten: benchmarks/results/*.csv
 
 set -e
 
 # ── Paden ──────────────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"   # absoluut pad naar benchmarks/
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"  # absoluut pad naar projectroot
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WASI_HOST_DIR="$PROJECT_ROOT/wasi-usb/usb-wasi-host"
+WASM_USB_HOST_DIR="$PROJECT_ROOT/usb-wasm/wasmtime-usb"  # voor streams-test (nieuwe host)
 RESULTS_DIR="$SCRIPT_DIR/results"
 
 mkdir -p "$RESULTS_DIR"
 
-# ── Latency device parameters (Loopback) ───────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# ── DEVICE-CONFIGURATIE  ─────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Latency device — Pico 2 loopback CDC.
+# Pico 2 (RP2350) exposeert Full-Speed USB (12 Mbps, bulk MPS = 64 B).
+LATENCY_LABEL="usb2fs_pico"
 LATENCY_VID="cafe"
 LATENCY_PID="4002"
 LATENCY_INTERFACE="0"
 LATENCY_EP_OUT="01"
 LATENCY_EP_IN="81"
 
-# ── Throughput device parameters (Mass Storage) ────────────────────────────────
+# Throughput device — SanDisk Ultra USB 3.0.
+# SuperSpeed bulk MPS = 1024 B, theoretisch plafond ~400 MB/s.
+THROUGHPUT_LABEL="usb3ss_sandisk"
 THROUGHPUT_VID="0781"
 THROUGHPUT_PID="5581"
 THROUGHPUT_INTERFACE="0"
 THROUGHPUT_EP_OUT="02"
 THROUGHPUT_EP_IN="81"
 
-# ── Latency parameters ─────────────────────────────────────────────────────────
-# Alleen veelvouden van 64 (USB 2.0 bulk max-packet-size)
-LATENCY_SIZES=(64 128 192 256 512 1024)
+# ══════════════════════════════════════════════════════════════════════════════
+# ── BENCHMARK-PARAMETERS  ────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Latency — veelvouden van 64 (USB 2.0 FS bulk MPS).
+LATENCY_SIZES=(64 128 256 512 1024)
 LATENCY_ITERATIONS=10000
 
-# ── Throughput parameters ──────────────────────────────────────────────────────
+# Throughput — schaalt omhoog tot dicht bij USB 3.0 SS plafond (~400 MB/s).
+# Kleinste groottes belichten CBW/CSW-overhead, grootste het bus-plafond.
 THROUGHPUT_START_LBA=2048
-THROUGHPUT_SIZE_MB=(2 4 8 16 32 64)
+THROUGHPUT_SIZE_MB=(8 32 128 256 512)
 THROUGHPUT_RUNS=10
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# Init-benchmark — meet cold-start overhead.
+# Ruim genoeg iteraties voor een stabiele mediaan zonder te lang te duren.
+INIT_ITERATIONS=200
+
+# Streams-test — USB 3.0 SanDisk stick.
+STREAMS_NUM=16
+STREAMS_PAYLOAD=1024  # 1 × SuperSpeed bulk MPS
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── RESOURCE-TRACKING (CPU + RSS tijdens run)  ───────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Start een achtergrond-poller die elke 200 ms %CPU + RSS vastlegt voor PID $1
+# naar CSV $2. Stopt wanneer het proces verdwijnt.
+start_resource_tracker() {
+    local pid="$1"
+    local csv="$2"
+    echo "timestamp_ms,cpu_pct,rss_kb" > "$csv"
+    (
+        local t0=$(date +%s%3N 2>/dev/null || python3 -c 'import time;print(int(time.time()*1000))')
+        while kill -0 "$pid" 2>/dev/null; do
+            local line
+            line=$(ps -o %cpu=,rss= -p "$pid" 2>/dev/null | awk '{printf "%s,%s", $1, $2}')
+            if [ -n "$line" ]; then
+                local t=$(date +%s%3N 2>/dev/null || python3 -c 'import time;print(int(time.time()*1000))')
+                echo "$((t - t0)),$line" >> "$csv"
+            fi
+            sleep 0.2
+        done
+    ) &
+    echo $!
+}
+
+# Wrap een bench-commando in resource-tracking.
+# Args: $1=csv_pad voor resource, overige=commando
+run_with_tracking() {
+    local rescsv="$1"; shift
+    ( "$@" ) &
+    local pid=$!
+    local tpid
+    tpid=$(start_resource_tracker "$pid" "$rescsv")
+    wait "$pid" 2>/dev/null || true
+    kill "$tpid" 2>/dev/null || true
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── HELPERS: LATENCY  ────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
 run_latency_native() {
     local exe="$1"
     local variant="$2"
-    echo "=== Latency native: $variant ==="
+    echo "=== Latency native: $variant (${LATENCY_LABEL}) ==="
     for size in "${LATENCY_SIZES[@]}"; do
         echo "  -> $size bytes"
-        # Verander naar benchmarks/ zodat results/ op de juiste plek aangemaakt wordt
-        (cd "$SCRIPT_DIR" && sudo "$exe" "$LATENCY_VID" "$LATENCY_PID" "$LATENCY_INTERFACE" "$LATENCY_EP_OUT" "$LATENCY_EP_IN" \
+        local rescsv="$RESULTS_DIR/resources_latency_${variant}_${LATENCY_LABEL}_${size}.csv"
+        (cd "$SCRIPT_DIR" && run_with_tracking "$rescsv" \
+            sudo "$exe" "$LATENCY_VID" "$LATENCY_PID" "$LATENCY_INTERFACE" \
+            "$LATENCY_EP_OUT" "$LATENCY_EP_IN" \
             "$size" "$LATENCY_ITERATIONS" "$variant")
     done
 }
 
 run_latency_wasi() {
-    local wasm="$1"       # absoluut pad naar de .component.wasm
+    local wasm="$1"
     local variant="$2"
-    echo "=== Latency WASI: $variant ==="
+    echo "=== Latency WASI: $variant (${LATENCY_LABEL}) ==="
     for size in "${LATENCY_SIZES[@]}"; do
         echo "  -> $size bytes"
-        # CWD = benchmarks/ zodat results/ op de juiste plek aangemaakt wordt.
-        (cd "$SCRIPT_DIR" && sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
+        local rescsv="$RESULTS_DIR/resources_latency_${variant}_${LATENCY_LABEL}_${size}.csv"
+        (cd "$SCRIPT_DIR" && run_with_tracking "$rescsv" \
+            sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
             --debug_level off --component-path "$wasm" \
-            "$LATENCY_VID" "$LATENCY_PID" "$LATENCY_INTERFACE" "$LATENCY_EP_OUT" "$LATENCY_EP_IN" \
+            "$LATENCY_VID" "$LATENCY_PID" "$LATENCY_INTERFACE" \
+            "$LATENCY_EP_OUT" "$LATENCY_EP_IN" \
             "$size" "$LATENCY_ITERATIONS" "$variant")
     done
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ── HELPERS: THROUGHPUT  ─────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
 
 run_throughput_native() {
     local exe="$1"
     local variant="$2"
-    echo "=== Throughput native: $variant ==="
+    echo "=== Throughput native: $variant (${THROUGHPUT_LABEL}) ==="
     for size in "${THROUGHPUT_SIZE_MB[@]}"; do
         echo "  -> $size MB"
-        (cd "$SCRIPT_DIR" && sudo "$exe" "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" "$THROUGHPUT_EP_OUT" "$THROUGHPUT_EP_IN" \
+        local rescsv="$RESULTS_DIR/resources_throughput_${variant}_${THROUGHPUT_LABEL}_${size}MB.csv"
+        (cd "$SCRIPT_DIR" && run_with_tracking "$rescsv" \
+            sudo "$exe" "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" \
+            "$THROUGHPUT_EP_OUT" "$THROUGHPUT_EP_IN" \
             "$THROUGHPUT_START_LBA" "$size" "$THROUGHPUT_RUNS" "$variant")
     done
 }
@@ -82,91 +162,151 @@ run_throughput_native() {
 run_throughput_wasi() {
     local wasm="$1"
     local variant="$2"
-    echo "=== Throughput WASI: $variant ==="
+    echo "=== Throughput WASI: $variant (${THROUGHPUT_LABEL}) ==="
     for size in "${THROUGHPUT_SIZE_MB[@]}"; do
         echo "  -> $size MB"
-        # CWD = benchmarks/ zodat results/ op de juiste plek aangemaakt wordt.
-        (cd "$SCRIPT_DIR" && sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
+        local rescsv="$RESULTS_DIR/resources_throughput_${variant}_${THROUGHPUT_LABEL}_${size}MB.csv"
+        (cd "$SCRIPT_DIR" && run_with_tracking "$rescsv" \
+            sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
             --debug_level off --component-path "$wasm" \
-            "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" "$THROUGHPUT_EP_OUT" "$THROUGHPUT_EP_IN" \
+            "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" \
+            "$THROUGHPUT_EP_OUT" "$THROUGHPUT_EP_IN" \
             "$THROUGHPUT_START_LBA" "$size" "$THROUGHPUT_RUNS" "$variant")
     done
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ── HELPERS: INIT-TIJD  ──────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+run_init_native() {
+    local exe="$1"
+    local variant="$2"
+    local vid="$3"; local pid="$4"; local iface="$5"; local label="$6"
+    echo "=== Init native: $variant ($label) ==="
+    (cd "$SCRIPT_DIR" && sudo "$exe" "$vid" "$pid" "$iface" "$INIT_ITERATIONS" \
+        "${variant}_${label}")
+}
+
+run_init_wasi() {
+    local wasm="$1"
+    local variant="$2"
+    local vid="$3"; local pid="$4"; local iface="$5"; local label="$6"
+    echo "=== Init WASI: $variant ($label) ==="
+    (cd "$SCRIPT_DIR" && sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
+        --debug_level off --component-path "$wasm" \
+        "$vid" "$pid" "$iface" "$INIT_ITERATIONS" "${variant}_${label}")
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── HELPERS: STREAMS (USB 3.0)  ──────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+run_streams_test() {
+    local wasm="$PROJECT_ROOT/usb-wasm/target/wasm32-wasip2/release/streams-test.wasm"
+    local log="$RESULTS_DIR/streams_test_${THROUGHPUT_LABEL}.log"
+    echo "=== Streams test (${THROUGHPUT_LABEL}) ==="
+    if [ ! -f "$wasm" ]; then
+        echo "  ! streams-test component niet gebouwd. Run:"
+        echo "    cd $PROJECT_ROOT/usb-wasm/command-components/streams-test && cargo build --release --target wasm32-wasip2"
+        return 1
+    fi
+
+    sudo cargo run --release --manifest-path "$WASM_USB_HOST_DIR/Cargo.toml" -- \
+        --component-path "$wasm" -- \
+        "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" \
+        "$THROUGHPUT_EP_OUT" "$THROUGHPUT_EP_IN" \
+        "$STREAMS_NUM" "$STREAMS_PAYLOAD" 2>&1 | tee "$log"
+    echo "  log: $log"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── HELPER: YOLO  (ongewijzigd t.o.v. vorige versie)  ────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
 run_yolo_benchmark() {
     local wasm="$PROJECT_ROOT/usb-wasm/command-components/yolo-detector/target/wasm32-wasip2/release/yolo_detector.component.wasm"
     local model_path="${YOLO_MODEL_PATH:-$PROJECT_ROOT/yolov8n.onnx}"
-    
+
     echo "=== YOLO Benchmark ==="
-    mkdir -p "$RESULTS_DIR"
-    
     if [ ! -f "$wasm" ]; then
-        echo "Error: YOLO component not found at $wasm. Run 'cargo component build --release' in the component directory."
+        echo "  ! YOLO component niet gebouwd: $wasm"
         return 1
     fi
 
     local log_file="$RESULTS_DIR/yolo_host.log"
-    echo "Running host with YOLO component... (Model: $model_path)"
-    
-    # Run host in background
+    echo "  host model: $model_path"
+
     sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
         --component-path "$wasm" --enable-yolo -- "$model_path" > "$log_file" 2>&1 &
-    HOST_PID=$!
-    
-    # Start resource tracker
+    local HOST_PID=$!
     "$SCRIPT_DIR/yolo_resource_tracker.sh" "$HOST_PID" "$RESULTS_DIR/yolo_resources.csv" &
-    TRACKER_PID=$!
-    
-    echo "Host PID: $HOST_PID, Tracker PID: $TRACKER_PID"
-    echo "Benchmark running... (will stop when host exits or after timeout)"
-    
-    # Give it some time to run if it doesn't exit automatically (it's a stream)
-    # For a benchmark, we might want to run for N seconds then kill it
+    local TRACKER_PID=$!
+
     sleep 30
-    sudo kill $HOST_PID 2>/dev/null || true
-    wait $HOST_PID 2>/dev/null || true
-    kill $TRACKER_PID 2>/dev/null || true
-    
-    # Extract latency
+    sudo kill "$HOST_PID" 2>/dev/null || true
+    wait "$HOST_PID" 2>/dev/null || true
+    kill "$TRACKER_PID" 2>/dev/null || true
+
     grep "Inference took:" "$log_file" | sed 's/.*Inference took: //; s/ms//' > "$RESULTS_DIR/yolo_latency.csv"
-    echo "YOLO results saved to $RESULTS_DIR/yolo_latency.csv and yolo_resources.csv"
+    echo "  resultaten: $RESULTS_DIR/yolo_latency.csv + yolo_resources.csv"
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ── MAIN  ────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
 
-# ── Mode ───────────────────────────────────────────────────────────────────────
 MODE="${1:---all}"
 
-# ── YOLO benchmark ─────────────────────────────────────────────────────────────
 if [[ "$MODE" == "--yolo" || "$MODE" == "--all" ]]; then
-    run_yolo_benchmark
+    run_yolo_benchmark || true
 fi
 
-# ── Latency benchmarks ─────────────────────────────────────────────────────────
 if [[ "$MODE" == "--latency" || "$MODE" == "--all" ]]; then
     echo ""
     echo "══════════════════════════════════════════"
-    echo " LATENCY BENCHMARKS  (loopback device)"
+    echo " LATENCY  — Pico 2 loopback (USB 2.0 FS)"
     echo "══════════════════════════════════════════"
-
     run_latency_native "$SCRIPT_DIR/c/latency_vanilla_native" "libusb_native"
     run_latency_native "$SCRIPT_DIR/rust/latency_native"      "rusb_native"
-
-    run_latency_wasi "$SCRIPT_DIR/c/latency_leroy.component.wasm"    "libusb_wasi"
-    run_latency_wasi "$SCRIPT_DIR/rust/latency_rusb.component.wasm"  "rusb_wasi"
+    run_latency_wasi   "$SCRIPT_DIR/c/latency_leroy.component.wasm"    "libusb_wasi"
+    run_latency_wasi   "$SCRIPT_DIR/rust/latency_rusb.component.wasm"  "rusb_wasi"
 fi
 
-# ── Throughput benchmarks ──────────────────────────────────────────────────────
 if [[ "$MODE" == "--throughput" || "$MODE" == "--all" ]]; then
     echo ""
     echo "══════════════════════════════════════════"
-    echo " THROUGHPUT BENCHMARKS  (mass storage)"
+    echo " THROUGHPUT  — SanDisk USB 3.0 SuperSpeed"
     echo "══════════════════════════════════════════"
-
     run_throughput_native "$SCRIPT_DIR/c/throughput_vanilla_native"      "libusb_native"
     run_throughput_native "$SCRIPT_DIR/rust/throughput_native"           "rusb_native"
+    run_throughput_wasi   "$SCRIPT_DIR/c/throughput_leroy.component.wasm"   "libusb_wasi"
+    run_throughput_wasi   "$SCRIPT_DIR/rust/throughput_rusb.component.wasm" "rusb_wasi"
+fi
 
-    run_throughput_wasi "$SCRIPT_DIR/c/throughput_leroy.component.wasm"   "libusb_wasi"
-    run_throughput_wasi "$SCRIPT_DIR/rust/throughput_rusb.component.wasm" "rusb_wasi"
+if [[ "$MODE" == "--init" || "$MODE" == "--all" ]]; then
+    echo ""
+    echo "══════════════════════════════════════════"
+    echo " INIT  — libusb stack cold-start"
+    echo "══════════════════════════════════════════"
+    # Pico (USB 2.0 FS)
+    run_init_native "$SCRIPT_DIR/c/usb_init_native" "libusb_native" \
+        "$LATENCY_VID" "$LATENCY_PID" "$LATENCY_INTERFACE" "$LATENCY_LABEL"
+    run_init_wasi   "$SCRIPT_DIR/c/usb_init.component.wasm" "libusb_wasi" \
+        "$LATENCY_VID" "$LATENCY_PID" "$LATENCY_INTERFACE" "$LATENCY_LABEL"
+    # SanDisk (USB 3.0 SS)
+    run_init_native "$SCRIPT_DIR/c/usb_init_native" "libusb_native" \
+        "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" "$THROUGHPUT_LABEL"
+    run_init_wasi   "$SCRIPT_DIR/c/usb_init.component.wasm" "libusb_wasi" \
+        "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" "$THROUGHPUT_LABEL"
+fi
+
+if [[ "$MODE" == "--streams" || "$MODE" == "--all" ]]; then
+    echo ""
+    echo "══════════════════════════════════════════"
+    echo " STREAMS  — USB 3.0 Bulk Streams validatie"
+    echo "══════════════════════════════════════════"
+    run_streams_test || true
 fi
 
 echo ""

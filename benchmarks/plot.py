@@ -544,4 +544,75 @@ else:
 
     print("\nThroughput visualizations complete.")
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── SECTIE 3: INIT-TIJD (libusb_init + enumerate + open + claim)  ─────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# CSVs: results/init_results_<variant>_<devicelabel>.csv
+# Kolommen: iteration, init_ms, enumerate_ms, open_ms, claim_ms, teardown_ms, total_ms
+
+init_frames = []
+for path in RESULTS_DIR.glob("init_results_*.csv"):
+    # bestandsnaam: init_results_<variant>_<label>.csv
+    # <variant> is "libusb_native" of "libusb_wasi"
+    stem = path.stem  # init_results_libusb_native_usb3ss_sandisk
+    parts = stem.split("_")
+    if len(parts) < 5:
+        continue
+    # Neem "libusb_native" / "libusb_wasi" als variant (eerste 2 tokens na "init_results")
+    variant = "_".join(parts[2:4])
+    label = "_".join(parts[4:])
+    if variant not in LABELS:
+        continue
+    try:
+        df = pd.read_csv(path)
+    except Exception:
+        continue
+    df["variant"] = variant
+    df["device"] = label
+    init_frames.append(df)
+
+if init_frames:
+    df_init = pd.concat(init_frames, ignore_index=True)
+    phases = ["init_ms", "enumerate_ms", "open_ms", "claim_ms", "teardown_ms", "total_ms"]
+
+    for device in df_init["device"].unique():
+        sub = df_init[df_init["device"] == device]
+        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+        axes = axes.flatten()
+        for i, phase in enumerate(phases):
+            ax = axes[i]
+            data = []
+            labels = []
+            colors = []
+            for variant in ["libusb_native", "libusb_wasi"]:
+                v = sub[sub["variant"] == variant][phase].dropna()
+                if len(v) == 0:
+                    continue
+                data.append(v.values)
+                labels.append(LABELS[variant])
+                colors.append(COLOR_MAP[variant])
+            if not data:
+                ax.set_visible(False)
+                continue
+            styled_boxplot(ax, data, labels, colors,
+                           title=f"{phase.replace('_ms','').capitalize()}",
+                           xlabel="", ylabel="Duur (ms)")
+        fig.suptitle(f"USB-stack init-overhead — {device}",
+                     fontsize=13, fontweight='bold')
+        fig.tight_layout()
+        out = RESULTS_DIR / f"plot_init_{device}.png"
+        fig.savefig(out, dpi=140, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Saved: {out}")
+
+    # Tabel: mediaan per fase per variant per device
+    print("\nInit-tijd (mediaan, ms):")
+    summary = (df_init.groupby(["device", "variant"])[phases]
+                      .median()
+                      .round(3))
+    print(summary.to_string())
+else:
+    print("\n(init_results_*.csv niet gevonden — sla init-plot over)")
+
 print("\nAll visualizations complete. Plots saved in the results/ directory.")

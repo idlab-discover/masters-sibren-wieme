@@ -148,6 +148,39 @@ cp target/wasm32-wasip2/release/examples/usb_io.wasm "$BENCH_DIR/rust/utils/usb_
 
 cd "$PROJECT_ROOT"
 
+echo "=== Building Init Benchmark ==="
+
+# Native C
+echo "Building Native Vanilla C usb_init..."
+gcc -I"$PROJECT_ROOT/libusb-vanilla/libusb" \
+    "$BENCH_DIR/c/usb_init.c" \
+    "$PROJECT_ROOT/libusb-vanilla/libusb/.libs/libusb-1.0.a" \
+    -o "$BENCH_DIR/c/usb_init_native" \
+    -framework CoreFoundation -framework IOKit -framework Security
+
+# WASI Leroy C
+echo "Building WASI Leroy C usb_init..."
+cd "$BENCH_DIR/c"
+"$WASI_SDK_PATH/bin/clang" --target=wasm32-wasip2 --sysroot="$WASI_SDK_PATH/share/wasi-sysroot" \
+    -I"$RUSB_SYSROOT/usr/include/libusb-1.0" \
+    -c -o "usb_init.o" "usb_init.c"
+"$WASI_SDK_PATH/bin/wasm-ld" -m wasm32 \
+    -L"$RUSB_SYSROOT/usr/lib" \
+    -L"$WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasip2" \
+    "$WASI_SDK_PATH/share/wasi-sysroot/lib/wasm32-wasip2/crt1-command.o" \
+    -lusb-1.0 "usb_init.o" -lc \
+    "$WASI_SDK_PATH/lib/clang/21/lib/wasm32-unknown-wasip2/libclang_rt.builtins.a" \
+    -o "usb_init.wasm"
+"$WASM_TOOLS" component embed "$WIT_PATH" "usb_init.wasm" -o "usb_init.embedded.wasm" --world cguest
+"$WASM_TOOLS" component new "usb_init.embedded.wasm" -o "usb_init.component.wasm"
+rm "usb_init.o" "usb_init.wasm" "usb_init.embedded.wasm"
+cd "$PROJECT_ROOT"
+
+echo "=== Building Streams-Test Component (USB 3.0 bulk streams validatie) ==="
+cd "$PROJECT_ROOT/usb-wasm/command-components/streams-test"
+cargo build --release --target wasm32-wasip2
+cd "$PROJECT_ROOT"
+
 echo "=== Building Throughput Benchmarks ==="
 
 # Permutation 1: Native Vanilla C
