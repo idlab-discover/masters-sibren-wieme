@@ -20,7 +20,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WASI_HOST_DIR="$PROJECT_ROOT/wasi-usb/usb-wasi-host"
-WASM_USB_HOST_DIR="$PROJECT_ROOT/usb-wasm/wasmtime-usb"  # voor streams-test (nieuwe host)
 RESULTS_DIR="$SCRIPT_DIR/results"
 
 mkdir -p "$RESULTS_DIR"
@@ -202,16 +201,16 @@ run_init_wasi() {
 # ══════════════════════════════════════════════════════════════════════════════
 
 run_streams_test() {
-    local wasm="$PROJECT_ROOT/usb-wasm/target/wasm32-wasip2/release/streams-test.wasm"
+    local wasm="$PROJECT_ROOT/wasi-usb/out/streams-test.wasm"
     local log="$RESULTS_DIR/streams_test_${THROUGHPUT_LABEL}.log"
     echo "=== Streams test (${THROUGHPUT_LABEL}) ==="
     if [ ! -f "$wasm" ]; then
         echo "  ! streams-test component niet gebouwd. Run:"
-        echo "    cd $PROJECT_ROOT/usb-wasm/command-components/streams-test && cargo build --release --target wasm32-wasip2"
+        echo "    cd $PROJECT_ROOT/wasi-usb && just build-example streams-test"
         return 1
     fi
 
-    sudo cargo run --release --manifest-path "$WASM_USB_HOST_DIR/Cargo.toml" -- \
+    sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
         --component-path "$wasm" -- \
         "$THROUGHPUT_VID" "$THROUGHPUT_PID" "$THROUGHPUT_INTERFACE" \
         "$THROUGHPUT_EP_OUT" "$THROUGHPUT_EP_IN" \

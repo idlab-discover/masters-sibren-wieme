@@ -4,10 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository shape
 
-This is a **monorepo-of-submodules** for a Master's thesis on capability-based USB access from WebAssembly. The top-level directory holds the benchmark suite and documentation; everything else is a git submodule developed independently:
+This is a **monorepo-of-submodules** for a Master's thesis on capability-based USB access from WebAssembly. The top-level directory holds the benchmark suite and documentation:
 
-- `usb-wasm/` — primary host + guest implementation. Wasmtime-based host (`usb-wasm/usb-wasm/`), guest bindings crate (`usb-wasm-bindings/`), WIT contracts (`wit/`), and guest components (`command-components/`). Its own `Justfile` drives per-component builds. The webcam demo lives here.
-- `wasi-usb/` — Robbe Leroy's host runtime (`usb-wasi-host`). The **canonical WIT source of truth** lives at `wasi-usb/wit/`. Used by benchmark latency/throughput/init runners and by the C-guest path via `libusb-wasi`.
+- `wasi-usb/` — **canonical host + guest implementation** (Robbe Leroy's runtime). Contains:
+  - `usb-wasi-host/` — wasmtime-based host binary that implements the WIT interfaces.
+  - `usb-wasi-guest/` — Rust guest library + `examples/` with all demo components.
+  - `wit/` — **single source of truth** for `component:usb@0.2.1`.
+  - `usb-wasi-cguest/` — pre-built C bindings for benchmark components.
+  - `Justfile` — drive all guest builds and run commands.
 - `libusb-vanilla/` — upstream libusb, built as `.a` for native benchmark baselines.
 - `libusb-wasi/` — Leroy's libusb fork compiled to `wasm32-wasip2`, speaks the WIT interface. Used to build C guests for benchmarks.
 - `rusb-wasi/` — Rust rusb fork compiled to `wasm32-wasip2`.
@@ -17,93 +21,103 @@ The superproject commits only submodule SHA bumps + benchmark changes + top-leve
 
 ## WIT — single source of truth
 
-**`wasi-usb/wit/` is the canonical WIT package.** The directory `usb-wasm/wit/` is an **exact mirror** — always kept in sync by `cp -R wasi-usb/wit/* usb-wasm/wit/` (one-directional, wasi-usb is authoritative).
+**`wasi-usb/wit/` is the canonical WIT package.** There is no second copy — any component that needs USB interfaces points to this directory.
 
-The package is `component:usb@0.2.1` and contains six flat interface files:
+The package is `component:usb@0.2.1` and contains six flat interface files plus `world.wit`:
 - `errors.wit`, `configuration.wit`, `transfers.wit`, `descriptors.wit`, `device.wit`, `hotplug.wit`
+- `world.wit` — defines `host`, `cguest`, `guest`, and `webcam-guest` worlds.
 
-Key design points of Leroy's WIT (relevant for editing):
-- Hotplug uses **`flags event { arrived; left; }`** (not `enum`) — consumers must check flags, not match variants.
+Key design points (relevant for editing):
+- Hotplug uses **`flags event { arrived; left; }`** (not `enum`) — consumers must check flags, not match variants. Bitflag constants are uppercase in Rust: `Event::ARRIVED`, `Event::LEFT`.
 - `enable-hotplug` returns `result<_, libusb-error>` — no pollable.
 - `poll-events` returns `list<tuple<event, info, usb-device>>` — note the tuple order.
+- `await-transfer` takes `borrow<transfer>` → generated Rust signature is `await_transfer(xfer: &Transfer)`.
+- `await-transfer` returns `TransferResult { data: Vec<u8>, packets: Vec<IsoPacket> }` — no separate `IsoResult` or `await-iso-transfer`.
 - `device-handle` has a `close` method; there is **no** `exit` function.
 - Package version `@0.2.1` must appear on every `use` that resolves across packages.
 
-`usb-wasm/wit/world.wit` **extends** the mirror with three worlds (not part of wasi-usb's WIT):
-- `host` — matches Leroy's host world (imports all six interfaces).
-- `cguest` — same imports + exports `wasi:cli/run@0.2.5` (for C/Rust benchmark components).
-- `webcam-guest` — same as `cguest` plus filesystem + CLI WASI imports (for the standalone webcam component).
-
-Consumers:
-- **usb-wasm host**: `usb-wasm/usb-wasm/src/lib.rs` via `wasmtime::component::bindgen!({ world: "host", path: "../wit" })`. The `with:` key format for versioned packages is `"component:usb/interface@0.2.1/ResourceName"`.
-- **webcam guest**: inline `wit_bindgen::generate!({ world: "webcam-guest", path: "../../wit" })` — no pre-generated bindings crate dependency.
-- **C/Rust benchmark guests**: use `usb-wasm-bindings` crate (only `cguest` world), or inline proc-macro.
-
 ## Architecture — dumb host, smart guest
 
-Both hosts (`usb-wasm/usb-wasm/` and `wasi-usb/usb-wasi-host/`) expose only generic USB primitives (list/open/claim/transfer). No UVC, no MJPEG, no ML lives in any host. Everything protocol-specific runs in the guest. The webcam guest handles the full UVC handshake, MJPEG reassembly, and frame output.
+`wasi-usb/usb-wasi-host/` exposes only generic USB primitives (list/open/claim/transfer). No UVC, no MJPEG lives in the host. Everything protocol-specific runs in the guest. The webcam guest handles the full UVC handshake, MJPEG reassembly, and frame output.
 
 Relevant implementation details:
-- **Async callback flow**: libusb callbacks run on a dedicated event thread; the WIT `transfer` resource carries a `completed` flag they flip. `host_impl.rs::await_transfer` spins (yields to tokio) until the flag is set.
-- **USB 3.0 Bulk Streams**: dispatched via `libusb_fill_bulk_stream_transfer` when `TransferOptions.stream_id != 0`. `stream_id == 0` uses vanilla bulk. Implemented in both `usb-wasm/usb-wasm/src/usb_backend.rs` and `wasi-usb/usb-wasi-host/src/usb_backend.rs`.
-- **Two hosts, same backend logic**: `usb-wasm` has bulk-streams support; `wasi-usb` was ported to match. When editing `usb_backend.rs`, keep both in sync.
+- **Async callback flow**: libusb callbacks run on a dedicated event thread; the WIT `transfer` resource carries a `completed` flag they flip. `main.rs::await_transfer` spins (yields to tokio) until the flag is set.
+- **USB 3.0 Bulk Streams**: `TransferOptions.stream_id != 0` triggers `libusb_transfer_set_stream_id`. `stream_id == 0` uses vanilla bulk. `alloc_streams`/`free_streams` on `DeviceHandle` are fully implemented.
+- **WASI filesystem**: the host preopens the current working directory as `"."`. Guests write relative paths (`out/latest.jpg`). Run from a directory with an `out/` subdirectory.
 
 ## Common commands
 
 ### Top-level
 
 ```bash
-# Webcam demo:
-cd usb-wasm && just build-webcam
-just webcam   # sudo required on Linux/macOS
+# Webcam demo (Logitech Brio 100 or any UVC camera, sudo required):
+cd wasi-usb
+mkdir -p out
+just webcam   # builds host + webcam guest, then runs with sudo
 
-# Benchmarks (all modes):
+# Benchmarks:
 ./benchmarks/build_all.sh
 sudo ./benchmarks/run_benchmarks.sh --all
 # Individual modes: --latency | --throughput | --init | --streams
 python3 benchmarks/plot.py
 ```
 
-`build_all.sh` assumes `/opt/wasi-sdk` exists and `libusb-vanilla` + `rusb-wasi/examples/wasi-workload/wasi-sysroot` are present. It produces:
-- C natives: `benchmarks/c/*_native` (linked against `libusb-vanilla/libusb/.libs/libusb-1.0.a`; IOKit/CoreFoundation/Security on macOS).
-- C WASI components: `benchmarks/c/*.component.wasm` (via `wasi-sdk clang → wasm-ld → wasm-tools component embed/new --world cguest`).
-- Rust variants: `cargo build --release` (native) and `--target wasm32-wasip2` with `PKG_CONFIG_*` pointing at the rusb-wasi sysroot.
-
-### Inside `usb-wasm/` (uses `just`)
+### Inside `wasi-usb/` (uses `just`)
 
 ```bash
-just lsusb                  # list USB devices (lsusb-clone)
-just build-webcam           # build the webcam CLI component
-just webcam                 # run it with sudo
-just enumerate-devices-rust # enumerate via Rust
-just streams-test           # USB 3.0 bulk streams validation
-cargo build                 # build the wasmtime-usb host binary
+just build-host                   # cargo build --release -p usb-wasi-host
+just build-webcam                 # build webcam sub-crate → out/webcam.wasm
+just webcam                       # build + sudo run webcam (mkdir -p out first)
+just build-example lsusb          # build a .rs example → out/lsusb.wasm
+just lsusb                        # build + sudo run lsusb
+just streams-test <vid> <pid> ... # USB 3.0 bulk streams validation
+just enumerate-devices-rust       # list all USB devices
+just mass-storage tree            # FAT32 mass storage demo
+just build-all                    # build everything
 ```
 
 ### Benchmarks — device assumptions
 
 Hardcoded VID/PID:
-- **Latency** (USB 2.0 FS): Pico 2 loopback CDC — `cafe:4002`, iface 0, EP OUT `0x01` / IN `0x81`. Sizes 64/128/256/512/1024 B × 10 000 iterations.
-- **Throughput** (USB 3.0 SS): SanDisk Ultra — `0781:5581`, iface 0, EP OUT `0x02` / IN `0x81`. Sizes 8/32/128/256/512 MB × 10 runs from LBA 2048.
+- **Latency** (USB 2.0 FS): Pico 2 loopback CDC — `cafe:4002`, iface 0, EP OUT `0x01` / IN `0x81`.
+- **Throughput** (USB 3.0 SS): SanDisk Ultra — `0781:5581`, iface 0, EP OUT `0x02` / IN `0x81`.
 
 Both devices must be physically attached for `--all`. `--streams` uses only the SanDisk.
 
-### Host variants used by benchmarks
+Single host for all benchmark modes: `wasi-usb/usb-wasi-host`.
 
-- `wasi-usb/usb-wasi-host` — used by `--latency`, `--throughput`, `--init`. Drives C + Rust WASI components.
-- `usb-wasm/wasmtime-usb` — used by `--streams`. Same backend logic; used here for streams validation with the webcam-capable host binary.
+## Guest components
+
+All guest components live in `wasi-usb/usb-wasi-guest/examples/`:
+
+| Component | Type | Description |
+|-----------|------|-------------|
+| `webcam` | sub-crate | UVC webcam capture → `out/latest.jpg` |
+| `lsusb` | `.rs` example | Detailed USB device listing |
+| `enumerate-devices-rust` | `.rs` example | Simple device enumeration |
+| `control` | `.rs` example | Control transfer to Arduino |
+| `ping` | `.rs` example | Bulk OUT/IN echo test |
+| `streams-test` | `.rs` example | USB 3.0 bulk streams validation |
+| `xbox` | `.rs` example | Xbox One S controller reader |
+| `identity` | `.rs` example | Trivial device lister |
+| `mass-storage` | sub-crate | FAT32 mass storage (ls/cat/tree/benchmark) |
+| `ps5-maze` | sub-crate | Pac-man maze controlled by PS5/Xbox |
+| `xbox-maze` | sub-crate | Pac-man maze controlled by Xbox |
+| `enumerate-devices-go` | sub-crate | Go/tinygo device lister |
+
+`.rs` examples use inline `wit_bindgen::generate!({ world: "guest", path: "../wit" })`.
+Sub-crate guests (webcam, mass-storage, ps5-maze, xbox-maze) have their own `Cargo.toml` and use inline `wit_bindgen::generate!({ world: "guest" or "webcam-guest", path: "../../../wit" })`.
 
 ## Editing conventions
 
 - **Never add `Co-Authored-By` lines to commits** — explicit user requirement.
 - Commit messages use conventional-commits prefixes (`feat`, `fix`, `refactor`, `chore`).
-- `usb-wasm-bindings/src/cguest.rs` is a **generated artefact** checked into git. Regenerate via `usb-wasm-bindings/regenerate-bindings.sh` (uses `wit-bindgen` CLI for the `cguest` world only). Do not hand-edit.
-- After changing `wasi-usb/wit/`, always mirror to `usb-wasm/wit/` (excluding `world.wit`): `cp wasi-usb/wit/*.wit usb-wasm/wit/` then verify `diff -r usb-wasm/wit wasi-usb/wit` only shows `world.wit`.
-- The webcam guest (`command-components/webcam/`) uses **inline** `wit_bindgen::generate!` — no pre-generated bindings step needed.
-- Working guest components as of current HEAD: `lsusb`, `enumerate-devices-rust`, `webcam`, `streams-test`. Several legacy guests (ping, control, mass-storage, xbox, ps5-maze) predate the current WIT shapes and will not compile without updates.
+- The webcam guest uses **inline** `wit_bindgen::generate!` — no pre-generated bindings step needed.
+- All guests use `await_transfer(&xfer)` (borrow) and access bytes via `result.data`.
+- The WIT `world.wit` is the only file with worlds — interface files contain no worlds.
 
 ## Documentation files worth reading first
 
 - `README.md` (top-level) — thesis context, demo invocations, architecture diagram.
-- `benchmarks/README.md` — benchmark matrix, variants (`libusb_native`, `libusb_wasi`, `rusb_native`, `rusb_wasi`), statistical design.
+- `benchmarks/README.md` — benchmark matrix, variants, statistical design.
 - `masterproef_structuur.md`, `workload_compilatie.md` — thesis-oriented narrative docs in Dutch.

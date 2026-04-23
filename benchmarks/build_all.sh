@@ -177,8 +177,8 @@ rm "usb_init.o" "usb_init.wasm" "usb_init.embedded.wasm"
 cd "$PROJECT_ROOT"
 
 echo "=== Building Streams-Test Component (USB 3.0 bulk streams validatie) ==="
-cd "$PROJECT_ROOT/usb-wasm/command-components/streams-test"
-cargo build --release --target wasm32-wasip2
+cd "$PROJECT_ROOT/wasi-usb"
+just build-example streams-test
 cd "$PROJECT_ROOT"
 
 echo "=== Building Throughput Benchmarks ==="

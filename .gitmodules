@@ -10,6 +10,3 @@
 [submodule "wasi-usb"]
 	path = wasi-usb
 	url = git@github.com:idlab-discover/wasi-usb.git
-[submodule "usb-wasm"]
-	path = usb-wasm
-	url = git@github.com:idlab-discover/usb-wasm.git

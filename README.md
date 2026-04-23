@@ -11,8 +11,7 @@ The core objective of this project is to bridge the gap between high-level, sand
 
 ### Key Components
 
-- **[wasi-usb](./wasi-usb/)**: The host runtime environment. It implements the WASI-USB interface and translates Wasm guest calls into native USB operations using OS-level system calls (via libusb/rusb).
-- **[usb-wasm](./usb-wasm/)**: A collection of WebAssembly components and WIT definitions that utilize the WASI-USB interface. This includes a real-time UVC webcam demo.
+- **[wasi-usb](./wasi-usb/)**: The canonical host runtime and single source of WIT truth. Implements the `component:usb@0.2.1` interface and translates Wasm guest calls into native USB operations. All guest components (webcam, lsusb, mass-storage, …) live under `wasi-usb/usb-wasi-guest/examples/`.
 - **[libusb-wasi](./libusb-wasi/)**: A modified version of the standard `libusb` C library, featuring a custom WASI backend to route I/O through the WASI-USB interface.
 - **[rusb-wasi](./rusb-wasi/)**: A Rust wrapper for `libusb-wasi`, enabling Rust applications to be compiled to `wasm32-wasip2` with secure USB access.
 - **[benchmarks](./benchmarks/)**: A comprehensive benchmarking suite for measuring latency and throughput overhead compared to native execution.
@@ -23,23 +22,23 @@ The diagram below illustrates the relationship between the Wasm guest applicatio
 
 ```mermaid
 graph TD
-    App[Wasm Application / Workload]
-    App -->|Rust| Rusb[rusb-wasi]
-    App -->|C+| Libusb[libusb-wasi]
-    Rusb --> Libusb
-    Libusb -->|WASI-USB Interface| Host[wasi-usb Host]
+    App[Wasm Guest Component]
+    App -->|Rust wit-bindgen| USB[component:usb@0.2.1 WIT]
+    App -->|C libusb-wasi| USB
+    USB -->|WASI-USB Interface| Host[usb-wasi-host]
     Host -->|libusb/OS APIs| HW[Physical USB Device]
-    
+
     subgraph "Wasm Sandbox"
     App
-    Rusb
-    Libusb
     end
-    
-    subgraph "Host Runtime"
+
+    subgraph "Host Runtime (wasi-usb)"
+    USB
     Host
     end
 ```
+
+**Dumb-host / smart-guest**: the host exposes only generic USB primitives (open/claim/transfer). All protocol-specific logic (UVC, MJPEG, FAT32, HID parsing) lives in the guest component.
 
 ## Hardware & Software Support
 
@@ -57,68 +56,69 @@ git clone --recursive https://github.com/idlab-discover/masters-sibren-wieme.git
 cd masters-sibren-wieme
 ```
 
-### 2. Build the Host Runtime
-The host runtime is responsible for translating WASI-USB calls into native USB operations.
+### 2. Build the host
 ```bash
-cd wasi-usb/usb-wasi-host
-cargo build --release
+cd wasi-usb
+just build-host   # cargo build --release -p usb-wasi-host
 ```
 
 ## Running the Demos
 
 ### 1. UVC Webcam Capture
-A real-time UVC frame-capture demonstration. The webcam guest handles UVC probe/commit negotiation and MJPEG reassembly; the host only provides generic USB primitives (dumb-host / smart-guest architecture).
+A real-time UVC frame-capture demonstration. The webcam guest handles UVC probe/commit negotiation and MJPEG reassembly; the host only provides generic USB primitives.
 
 ```bash
-# Build the webcam component
-cd usb-wasm
-just build-webcam
-
-# Run (Logitech Brio 100 or any UVC camera, sudo required for USB access)
-just webcam
+cd wasi-usb
+mkdir -p out
+just webcam   # builds webcam component + runs with sudo
+# Captured frames are written to wasi-usb/out/latest.jpg
+# Open out/latest.jpg in Preview/feh and press ENTER to refresh
 ```
 
-### 3. DualSense (PS5) Pacman Maze
-A complete maze game featuring Ghost AI, score systems, and real-time controller input via a PS5 DualSense (or Xbox) controller.
+### 2. USB Device Listing
 
 ```bash
-# Ensure your PS5 controller is connected via USB
-cd usb-wasm
-just ps5-maze
+cd wasi-usb && just lsusb
+# or enumerate-devices-rust for a compact list
+just enumerate-devices-rust
+```
+
+### 3. DualSense (PS5) / Xbox Pacman Maze
+
+```bash
+cd wasi-usb && just ps5-maze   # PS5 DualSense or Xbox controller
+cd wasi-usb && just xbox-maze  # Xbox controller
+```
+
+### 4. Mass Storage (FAT32)
+
+```bash
+cd wasi-usb && just mass-storage tree
+cd wasi-usb && just mass-storage ls /
 ```
 
 ## Benchmarking Suite
 
-The project includes a comprehensive benchmarking suite to measure the latency and throughput overhead of the WASI-USB interface.
-
 ```bash
 cd benchmarks
 ./build_all.sh
-./run_benchmarks.sh
+sudo ./run_benchmarks.sh --all
+# or individual modes: --latency | --throughput | --init | --streams
+python3 plot.py
 ```
-See the [benchmarks/README.md](./benchmarks/README.md) for detailed analysis of the performance results.
+
+See [benchmarks/README.md](./benchmarks/README.md) for detailed analysis.
 
 > [!TIP]
-> If `just` is not in your `PATH`, you can use the absolute path (typically `/opt/homebrew/bin/just` on macOS) or install it via `brew install just`.
-
-## Utility Tools
-
-*   **lsusb**: A Wasm-based implementation of the classic utility to list USB devices.
-    ```bash
-    cd usb-wasm && just lsusb
-    ```
-*   **enumerate-devices**: A Go/Rust demonstration of device discovery via WASI-USB.
-    ```bash
-    cd usb-wasm && just enumerate-devices-rust
-    ```
+> If `just` is not in your `PATH`, install it via `brew install just` (macOS) or `cargo install just`.
 
 ## Contributors
 
-This research and implementation is the result of research during master thesises from:
-*   **Wouter Hennen**
-*   **Warre Dujardin**
-*   **Robbe Leroy**
-*   **Sibren Wieme**
+This research and implementation is the result of master theses from:
+- **Wouter Hennen**
+- **Warre Dujardin**
+- **Robbe Leroy**
+- **Sibren Wieme**
 
 ## Licensing
 
