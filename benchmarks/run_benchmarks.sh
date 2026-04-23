@@ -2,7 +2,7 @@
 # run_benchmarks.sh — Voert alle benchmarks uit en slaat resultaten op in benchmarks/results/
 #
 # Gebruik (vanuit projectroot):
-#   sudo ./benchmarks/run_benchmarks.sh [--latency | --throughput | --init | --streams | --yolo | --all]
+#   sudo ./benchmarks/run_benchmarks.sh [--latency | --throughput | --init | --streams | --all]
 #
 # Standaard: --all
 #
@@ -11,7 +11,6 @@
 #   --throughput  MSC read/write via SanDisk USB 3.0 stick (SuperSpeed).
 #   --init        Tijd voor libusb_init + enumerate + open + claim (cold start).
 #   --streams     USB 3.0 Bulk Streams validatie (alloc_streams + stream-bulk xfer).
-#   --yolo        Webcam→YOLO end-to-end + host-side CPU/RSS tracking.
 #
 # Resultaten: benchmarks/results/*.csv
 
@@ -221,46 +220,10 @@ run_streams_test() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ── HELPER: YOLO  (ongewijzigd t.o.v. vorige versie)  ────────────────────────
-# ══════════════════════════════════════════════════════════════════════════════
-
-run_yolo_benchmark() {
-    local wasm="$PROJECT_ROOT/usb-wasm/command-components/yolo-detector/target/wasm32-wasip2/release/yolo_detector.component.wasm"
-    local model_path="${YOLO_MODEL_PATH:-$PROJECT_ROOT/yolov8n.onnx}"
-
-    echo "=== YOLO Benchmark ==="
-    if [ ! -f "$wasm" ]; then
-        echo "  ! YOLO component niet gebouwd: $wasm"
-        return 1
-    fi
-
-    local log_file="$RESULTS_DIR/yolo_host.log"
-    echo "  host model: $model_path"
-
-    sudo cargo run --release --manifest-path "$WASI_HOST_DIR/Cargo.toml" -- \
-        --component-path "$wasm" --enable-yolo -- "$model_path" > "$log_file" 2>&1 &
-    local HOST_PID=$!
-    "$SCRIPT_DIR/yolo_resource_tracker.sh" "$HOST_PID" "$RESULTS_DIR/yolo_resources.csv" &
-    local TRACKER_PID=$!
-
-    sleep 30
-    sudo kill "$HOST_PID" 2>/dev/null || true
-    wait "$HOST_PID" 2>/dev/null || true
-    kill "$TRACKER_PID" 2>/dev/null || true
-
-    grep "Inference took:" "$log_file" | sed 's/.*Inference took: //; s/ms//' > "$RESULTS_DIR/yolo_latency.csv"
-    echo "  resultaten: $RESULTS_DIR/yolo_latency.csv + yolo_resources.csv"
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
 # ── MAIN  ────────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
 MODE="${1:---all}"
-
-if [[ "$MODE" == "--yolo" || "$MODE" == "--all" ]]; then
-    run_yolo_benchmark || true
-fi
 
 if [[ "$MODE" == "--latency" || "$MODE" == "--all" ]]; then
     echo ""

@@ -12,7 +12,7 @@ The core objective of this project is to bridge the gap between high-level, sand
 ### Key Components
 
 - **[wasi-usb](./wasi-usb/)**: The host runtime environment. It implements the WASI-USB interface and translates Wasm guest calls into native USB operations using OS-level system calls (via libusb/rusb).
-- **[usb-wasm](./usb-wasm/)**: A collection of WebAssembly components and WIT definitions that utilize the WASI-USB interface. This includes a real-time YOLOv8 object detection pipeline.
+- **[usb-wasm](./usb-wasm/)**: A collection of WebAssembly components and WIT definitions that utilize the WASI-USB interface. This includes a real-time UVC webcam demo.
 - **[libusb-wasi](./libusb-wasi/)**: A modified version of the standard `libusb` C library, featuring a custom WASI backend to route I/O through the WASI-USB interface.
 - **[rusb-wasi](./rusb-wasi/)**: A Rust wrapper for `libusb-wasi`, enabling Rust applications to be compiled to `wasm32-wasip2` with secure USB access.
 - **[benchmarks](./benchmarks/)**: A comprehensive benchmarking suite for measuring latency and throughput overhead compared to native execution.
@@ -66,26 +66,16 @@ cargo build --release
 
 ## Running the Demos
 
-### 1. Real-time YOLOv8 Object Detection (Terminal)
-This demo showcases high-performance object detection running in a sandboxed Wasm environment. Detections and inference timing are printed to the terminal.
+### 1. UVC Webcam Capture
+A real-time UVC frame-capture demonstration. The webcam guest handles UVC probe/commit negotiation and MJPEG reassembly; the host only provides generic USB primitives (dumb-host / smart-guest architecture).
 
 ```bash
-# Build the YOLO components and compose them
+# Build the webcam component
 cd usb-wasm
-just build-yolo-terminal-composed
+just build-webcam
 
-# Run the host with the composed YOLO component (Sudo required for USB access)
-sudo ../wasi-usb/target/release/usb-wasi-host \
-    --component-path out/yolo-terminal-composed.wasm \
-    --enable-yolo -- yolov8n.onnx
-```
-
-### 2. Webcam Streaming (WEBCAM-CV)
-A real-time capture and display demonstration using the WASI-USB webcam interface.
-
-```bash
-cd usb-wasm
-just webcam-cv
+# Run (Logitech Brio 100 or any UVC camera, sudo required for USB access)
+just webcam
 ```
 
 ### 3. DualSense (PS5) Pacman Maze
@@ -134,6 +124,6 @@ This research and implementation is the result of research during master thesise
 
 This project is dual-licensed:
 - **Infrastructure**: Components derived from the WASI community are subject to their original licenses (Apache 2.0 or LGPL).
-- **Original Research**: All original work (CV interfaces, YOLO detector, host-side CV logic, and benchmarks) is licensed under the **MIT License**.
+- **Original Research**: All original work (USB host implementation, webcam guest, and benchmarks) is licensed under the **MIT License**.
 
 Copyright (c) 2026 the contributors. All rights reserved.
