@@ -32,6 +32,7 @@ Cargo.lock
 *.swp
 *.swo
 .claude/
+CLAUDE.md
 
 # ── Documentation ─────────────────────────────────────────────────────────────
 # docs/ is currently in the root, if it's generated it stays ignored
