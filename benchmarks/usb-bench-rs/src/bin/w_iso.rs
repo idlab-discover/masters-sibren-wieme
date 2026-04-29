@@ -120,6 +120,33 @@ mod native {
 
                 check(libusb_set_configuration(handle, 1), "set_configuration")?;
                 check(libusb_claim_interface(handle, iface as c_int), "claim_interface")?;
+
+                // UVC probe/commit handshake — camera does not stream without this.
+                // Mirrors the webcam guest example: GET_CUR → set MJPEG → SET_CUR probe
+                // → GET_CUR (negotiated) → SET_CUR commit → then activate alt-setting.
+                {
+                    let mut probe = [0u8; 34];
+                    // 1. GET_CUR probe
+                    libusb_control_transfer(
+                        handle, 0xA1, 0x81, 0x0100, iface as u16,
+                        probe.as_mut_ptr(), 34, 1000);
+                    // 2. Request MJPEG (format 2), first frame
+                    probe[2] = 2; // bFormatIndex
+                    probe[3] = 1; // bFrameIndex
+                    // 3. SET_CUR probe
+                    libusb_control_transfer(
+                        handle, 0x21, 0x01, 0x0100, iface as u16,
+                        probe.as_mut_ptr(), 34, 1000);
+                    // 4. GET_CUR probe (negotiated)
+                    libusb_control_transfer(
+                        handle, 0xA1, 0x81, 0x0100, iface as u16,
+                        probe.as_mut_ptr(), 34, 1000);
+                    // 5. SET_CUR commit
+                    libusb_control_transfer(
+                        handle, 0x21, 0x01, 0x0200, iface as u16,
+                        probe.as_mut_ptr(), 34, 1000);
+                }
+
                 check(
                     libusb_set_interface_alt_setting(handle, iface as c_int, alt as c_int),
                     "set_interface_alt_setting",
@@ -229,6 +256,80 @@ mod wasm {
         pub num_packets: u32,
     }
 
+    /// UVC probe/commit handshake via WIT control transfers.
+    /// Must be called after claim_interface (alt 0) and before set_interface_altsetting.
+    fn uvc_negotiate_wasm(handle: &DeviceHandle, iface: u8) -> Result<()> {
+        let opts = TransferOptions {
+            endpoint: 0,
+            timeout_ms: 2000,
+            stream_id: 0,
+            iso_packets: 0,
+        };
+
+        // 1. GET_CUR probe — read camera defaults (34 bytes)
+        let get_probe_setup = TransferSetup {
+            bm_request_type: 0xA1,
+            b_request: 0x81, // GET_CUR
+            w_value: 0x0100, // VS_PROBE_CONTROL
+            w_index: iface as u16,
+        };
+        let xfer = handle
+            .new_transfer(TransferType::Control, get_probe_setup.clone(), 34, opts.clone())
+            .map_err(|e| anyhow!("uvc GET_CUR probe new_transfer: {:?}", e))?;
+        xfer.submit_transfer(&[]).map_err(|e| anyhow!("uvc GET_CUR probe submit: {:?}", e))?;
+        let mut probe = await_transfer(&xfer)
+            .map_err(|e| anyhow!("uvc GET_CUR probe await: {:?}", e))?
+            .data;
+
+        // 2. Request MJPEG (format 2), first frame size
+        if probe.len() >= 4 {
+            probe[2] = 2; // bFormatIndex: MJPEG
+            probe[3] = 1; // bFrameIndex:  first frame
+        }
+        let probe_len = probe.len() as u32;
+
+        // 3. SET_CUR probe — propose the format
+        let set_probe_setup = TransferSetup {
+            bm_request_type: 0x21,
+            b_request: 0x01, // SET_CUR
+            w_value: 0x0100, // VS_PROBE_CONTROL
+            w_index: iface as u16,
+        };
+        let xfer = handle
+            .new_transfer(TransferType::Control, set_probe_setup, probe_len, opts.clone())
+            .map_err(|e| anyhow!("uvc SET_CUR probe new_transfer: {:?}", e))?;
+        xfer.submit_transfer(&probe)
+            .map_err(|e| anyhow!("uvc SET_CUR probe submit: {:?}", e))?;
+        await_transfer(&xfer).map_err(|e| anyhow!("uvc SET_CUR probe await: {:?}", e))?;
+
+        // 4. GET_CUR probe — read back negotiated values
+        let xfer = handle
+            .new_transfer(TransferType::Control, get_probe_setup, probe_len, opts.clone())
+            .map_err(|e| anyhow!("uvc GET_CUR negotiated new_transfer: {:?}", e))?;
+        xfer.submit_transfer(&[])
+            .map_err(|e| anyhow!("uvc GET_CUR negotiated submit: {:?}", e))?;
+        let negotiated = await_transfer(&xfer)
+            .map_err(|e| anyhow!("uvc GET_CUR negotiated await: {:?}", e))?
+            .data;
+        let neg_len = negotiated.len() as u32;
+
+        // 5. SET_CUR commit — lock in the negotiated format
+        let commit_setup = TransferSetup {
+            bm_request_type: 0x21,
+            b_request: 0x01, // SET_CUR
+            w_value: 0x0200, // VS_COMMIT_CONTROL
+            w_index: iface as u16,
+        };
+        let xfer = handle
+            .new_transfer(TransferType::Control, commit_setup, neg_len, opts.clone())
+            .map_err(|e| anyhow!("uvc SET_CUR commit new_transfer: {:?}", e))?;
+        xfer.submit_transfer(&negotiated)
+            .map_err(|e| anyhow!("uvc SET_CUR commit submit: {:?}", e))?;
+        await_transfer(&xfer).map_err(|e| anyhow!("uvc SET_CUR commit await: {:?}", e))?;
+
+        Ok(())
+    }
+
     impl IsoDevice {
         pub fn open(
             vid: u16,
@@ -255,6 +356,13 @@ mod wasm {
             handle
                 .claim_interface(iface)
                 .map_err(|e| anyhow!("claim_interface: {:?}", e))?;
+
+            // Start at alt 0 (zero bandwidth), then negotiate, then activate.
+            handle.set_interface_altsetting(iface, 0).ok();
+
+            // UVC probe/commit handshake — camera does not stream without this.
+            uvc_negotiate_wasm(&handle, iface)?;
+
             handle
                 .set_interface_altsetting(iface, alt)
                 .map_err(|e| anyhow!("set_interface_altsetting: {:?}", e))?;

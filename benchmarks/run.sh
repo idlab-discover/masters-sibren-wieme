@@ -262,13 +262,17 @@ run_cell() {
     esac
 }
 
-# ── warm_cell: run WARMUP iterations, output to /dev/null ────────────────────
+# ── warm_cell: run WARMUP iterations, discard output ─────────────────────────
+# WASM components (C2/C4/C5) run inside a sandbox with only REPO_ROOT preopened.
+# /dev/null is outside the sandbox, so warmup must write to a path inside OUT_DIR.
 warm_cell() {
     local cond="$1"
     local wl="$2"
     [[ $WARMUP -eq 0 ]] && return
     echo "    (warm-up: ${WARMUP} iterations)"
-    run_cell "${cond}" "${wl}" /dev/null "${WARMUP}"
+    local discard="${OUT_DIR}/warmup_discard.csv"
+    run_cell "${cond}" "${wl}" "${discard}" "${WARMUP}" || true
+    rm -f "${discard}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────

@@ -153,6 +153,44 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* ── UVC probe/commit handshake ─────────────────────────────────────────
+     * Without this, the camera capture pipeline is inactive and ISO transfers
+     * return 0 bytes (LIBUSB_TRANSFER_TIMED_OUT or LIBUSB_TRANSFER_ERROR).
+     * Mirrors the sequence used in the webcam guest example.
+     * Sequence: GET_CUR probe → set MJPEG format → SET_CUR probe
+     *         → GET_CUR probe (negotiated) → SET_CUR commit.
+     * ─────────────────────────────────────────────────────────────────────── */
+    {
+        unsigned char probe[34];
+        memset(probe, 0, sizeof(probe));
+
+        /* 1. GET_CUR probe — read camera defaults */
+        libusb_control_transfer(handle,
+            0xA1u, 0x81u,              /* bmRequestType (class|iface|d→h), GET_CUR */
+            0x0100u, (uint16_t)iface,  /* wValue=VS_PROBE_CONTROL, wIndex=iface */
+            probe, (uint16_t)sizeof(probe), 1000);
+
+        /* 2. Request MJPEG format (index 2), first available frame size */
+        probe[2] = 2; /* bFormatIndex: MJPEG */
+        probe[3] = 1; /* bFrameIndex:  first frame */
+
+        /* 3. SET_CUR probe — propose the format */
+        libusb_control_transfer(handle,
+            0x21u, 0x01u, 0x0100u, (uint16_t)iface,
+            probe, (uint16_t)sizeof(probe), 1000);
+
+        /* 4. GET_CUR probe — read back negotiated values */
+        libusb_control_transfer(handle,
+            0xA1u, 0x81u, 0x0100u, (uint16_t)iface,
+            probe, (uint16_t)sizeof(probe), 1000);
+
+        /* 5. SET_CUR commit — activate the negotiated format */
+        libusb_control_transfer(handle,
+            0x21u, 0x01u,              /* bmRequestType (class|iface|h→d), SET_CUR */
+            0x0200u, (uint16_t)iface,  /* wValue=VS_COMMIT_CONTROL, wIndex=iface */
+            probe, (uint16_t)sizeof(probe), 1000);
+    }
+
     /* Switch to the alt-setting that has ISO endpoints (alt >= 1) */
     rc = libusb_set_interface_alt_setting(handle, iface, alt);
     if (rc != 0) {
