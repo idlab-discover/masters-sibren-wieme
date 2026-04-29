@@ -48,6 +48,9 @@ usb-wasm/out/
 wkg.lock
 wasi-usb/
 
+# ── Verouderde benchmark-artefacten (lokaal bewaard als referentie) ───────────
+benchmarks/
+
 # ── Thesis Overleaf export (lokale kopie, gesynchroniseerd via Overleaf) ─────
 Masterproef_Sibren_Overleaf/
 
