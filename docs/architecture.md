@@ -8,7 +8,7 @@ boundary.
 
 It is the canonical reference for what the system *is*; companion document
 [`implementation.md`](./implementation.md) describes what was *built* in this
-work — the contributions on top of prior work by Hennen and Leroy.
+work - the contributions on top of prior work by Hennen and Leroy.
 
 ---
 
@@ -20,16 +20,16 @@ The framework consists of five layers, separated cleanly by interface:
 
 | # | Layer | Purpose | Source |
 |---|-------|---------|--------|
-| 1 | **Guest application** | Application logic — UVC negotiation, FAT32 parsing, HID reports, benchmark code | `usb-wasi-guest/examples/` |
+| 1 | **Guest application** | Application logic - UVC negotiation, FAT32 parsing, HID reports, benchmark code | `usb-wasi-guest/examples/` |
 | 2 | **Guest bindings** | Translates the application's library calls (rusb / libusb / raw) into WIT host calls | `rusb-wasi/`, `libusb-wasi/`, wit-bindgen |
-| 3 | **WIT interface** | Stable contract: `component:usb@0.2.1` — `device`, `transfers`, `descriptors`, `hotplug`, `errors` | `wit/` |
+| 3 | **WIT interface** | Stable contract: `component:usb@0.2.1` - `device`, `transfers`, `descriptors`, `hotplug`, `errors` | `wit/` |
 | 4 | **Host runtime** | Wasmtime + Rust host that dispatches WIT methods, owns USB resources, enforces capabilities | `usb-wasi-host/` |
 | 5 | **OS USB stack** | libusb 1.0 + kernel driver (urb / IOUSBLib) | system |
 
 The fundamental design principle is **dumb host, smart guest**: the host
 exposes only generic USB primitives (open/claim/transfer). All
-protocol-specific logic — UVC Probe/Commit, MJPEG header parsing, FAT32
-traversal, HID report decoding — lives in the guest component. This is what
+protocol-specific logic - UVC Probe/Commit, MJPEG header parsing, FAT32
+traversal, HID report decoding - lives in the guest component. This is what
 makes the framework device-class-agnostic and the host runtime auditable as a
 small, fixed surface.
 
@@ -62,7 +62,7 @@ resource transfer       // returned by new-transfer(); submit/await/cancel/drop
 
 Resources are **opaque integer handles** on the guest side and live in the
 host's `wasmtime::component::ResourceTable`. The guest can hold a resource,
-pass it back to the host, or drop it — it cannot inspect or fabricate one.
+pass it back to the host, or drop it - it cannot inspect or fabricate one.
 This is the foundation of the capability model: a guest can only act on
 devices the host has handed it.
 
@@ -82,7 +82,7 @@ When the guest passes a `borrow<transfer>`, Wasmtime allocates a **temporary
 ResourceTable slot** for the duration of the host call, distinct from the
 slot that owns the resource. Wasmtime cleans up the borrow slot itself after
 the host call returns. The host **must not** call `table.delete` on a borrow
-slot — see [`implementation.md` §3.1](./implementation.md#31-the-borrow-bug)
+slot - see [`implementation.md` §3.1](./implementation.md#31-the-borrow-bug)
 for the bug this caused.
 
 ### 2.3 Isochronous Transfer Extension
@@ -143,7 +143,7 @@ sudo usb-wasi-host -c webcam.wasm \
 
 This populates the runtime `AllowedUSBDevices` enum, which is checked on
 every device enumeration. Devices outside the list are *invisible* to the
-guest — they are filtered out before any handle reaches the
+guest - they are filtered out before any handle reaches the
 `ResourceTable`.
 
 Two modes are supported:
@@ -161,7 +161,7 @@ pub enum AllowedUSBDevices {
 |-----------|-------------|----------------|
 | Docker `--device=/dev/bus/usb/N/M` | Bus address, kernel-renumbered | Container can issue arbitrary transfers, enumerate via sysfs |
 | Docker `--privileged` | Whole host | Full kernel access |
-| WASI-USB allow-list | VID:PID per guest | Guest has no `ioctl`, no `open("/dev/...")`, no `libusb_init` — only WIT surface |
+| WASI-USB allow-list | VID:PID per guest | Guest has no `ioctl`, no `open("/dev/...")`, no `libusb_init` - only WIT surface |
 
 A compromised guest cannot enumerate beyond its allow-list because the Wasm
 sandbox provides no system call that reaches the host USB stack directly.
@@ -172,7 +172,7 @@ The auditable surface is the WIT world declaration.
 - **VID:PID spoofing**: a malicious device claiming `046d:094c` will pass
   the filter. Hardware-level attestation (USB Authentication Spec, TPM-backed
   identity) is complementary but out of scope.
-- **Per-endpoint policy** is not yet enforced — once the device is opened,
+- **Per-endpoint policy** is not yet enforced - once the device is opened,
   the guest can claim any interface and submit any transfer. A finer
   capability model (per-endpoint, per-class) is a natural extension.
 
@@ -189,7 +189,7 @@ The host is a single Rust binary built from four source files:
 | `instrument.rs` | 182 | Per-call duration + Linux ctx-switch tracing |
 | `host.rs` | 309 | Generated WIT bindings (do not edit) |
 
-### 4.1 `MyState` — the Wasmtime store data
+### 4.1 `MyState` - the Wasmtime store data
 
 ```rust
 struct MyState {
@@ -204,7 +204,7 @@ Every WIT method receives `&mut MyState`. The `table` is the single source
 of truth for resource lifetimes; the `backend` is the only path to the OS
 USB stack.
 
-### 4.2 Backend Abstraction — `HostUsbBackend` trait
+### 4.2 Backend Abstraction - `HostUsbBackend` trait
 
 The trait separates *what* USB operations exist from *how* they are
 implemented. This was a deliberate refactor: prior versions had libusb
@@ -226,11 +226,11 @@ pub trait HostUsbBackend: Send + Sync {
 
 The shipped implementation is `LibusbBackend` (libusb1-sys FFI). A
 `RusbBackend` is a single-file replacement; a `MockBackend` for tests is
-similarly straightforward. **The guest is unaffected by backend choice** —
+similarly straightforward. **The guest is unaffected by backend choice** -
 the WIT contract is identical.
 
 Why this matters for the thesis: it is the architectural answer to
-*"libusb vs rusb — which is faster?"* — both can be measured under
+*"libusb vs rusb - which is faster?"* - both can be measured under
 identical guest code by swapping the backend, isolating the Rust-vs-C
 question from the WIT-overhead question.
 
@@ -246,7 +246,7 @@ UsbTransfer       // *libusb_transfer + buffer + tokio receiver + iso results
 
 Each has a corresponding `Drop` impl that handles the unsafe cleanup
 (`libusb_unref_device`, `libusb_close`, `libusb_free_transfer`). The Drop
-impls are *the only place* OS-level resources are released — every other
+impls are *the only place* OS-level resources are released - every other
 method either pushes a resource into the table or borrows it for an
 operation.
 
@@ -256,7 +256,7 @@ for the full state machine.
 
 ---
 
-## 5. Async Transfers — The Tokio Oneshot Pattern
+## 5. Async Transfers - The Tokio Oneshot Pattern
 
 USB transfers are inherently asynchronous: `libusb_submit_transfer` queues
 the transfer and returns immediately; the actual completion is signalled
@@ -315,7 +315,7 @@ operations that the transfer is done.
 global `Mutex<VecDeque<(Event, Info, UsbDevice)>>`. The guest polls with
 `poll-events`, which drains the queue. Why a queue rather than a stream:
 
-- The `wit` definition uses `flags event { arrived; left; }` — an event is a
+- The `wit` definition uses `flags event { arrived; left; }` - an event is a
   bit-flag value, not an opaque resource. A list of events fits the
   flag-based model naturally.
 - WIT `result<_, libusb-error>` (no pollable) was chosen for `enable-hotplug`
@@ -333,8 +333,8 @@ that disallowed devices never even enter the queue.
 
 `instrument.rs` provides a RAII `CallTrace` guard that, on drop, logs:
 
-- `dur_us` — wall-clock duration of the host method
-- `ctx_vol_delta` / `ctx_nvol_delta` — voluntary / non-voluntary context
+- `dur_us` - wall-clock duration of the host method
+- `ctx_vol_delta` / `ctx_nvol_delta` - voluntary / non-voluntary context
   switch deltas, read from `/proc/self/status` on Linux
 - a free-form detail string supplied by the caller
 
@@ -345,12 +345,12 @@ disabled.
 
 ---
 
-## 8. Threading Model — Summary
+## 8. Threading Model - Summary
 
 | Concern | Strategy |
 |---------|----------|
 | Host concurrency model | Tokio multi-threaded runtime via `#[tokio::main]` |
-| WIT method execution | `&mut MyState` — serial within a guest instance |
+| WIT method execution | `&mut MyState` - serial within a guest instance |
 | USB completion delivery | Dedicated libusb event thread; oneshot channel into Tokio |
 | Hotplug delivery | libusb callback → global `Mutex<VecDeque>` → guest polls |
 | Per-transfer state | `Arc<AtomicBool>` shared between C-callback and Rust drop path |
@@ -358,7 +358,7 @@ disabled.
 There is no thread pool of guest instances; each `usb-wasi-host` invocation
 runs **one** guest. Multi-tenant gateways are deployed as multiple host
 processes, each with its own allow-list. This is a deliberate simplicity
-choice — multi-tenancy in a single process would complicate the capability
+choice - multi-tenancy in a single process would complicate the capability
 model (per-instance allow-lists, per-instance backend state) without any
 isolation benefit over the OS process boundary.
 
@@ -366,7 +366,7 @@ isolation benefit over the OS process boundary.
 
 ## See also
 
-- [`implementation.md`](./implementation.md) — concrete contributions, design decisions, bug fixes
-- [`compiling.md`](./compiling.md) — how to build host + guests + benchmarks
-- [`benchmarking.md`](./benchmarking.md) — C1–C5 evaluation matrix
-- [`thesis.md`](./thesis.md) — chapter mapping and research framing
+- [`implementation.md`](./implementation.md) - concrete contributions, design decisions, bug fixes
+- [`compiling.md`](./compiling.md) - how to build host + guests + benchmarks
+- [`benchmarking.md`](./benchmarking.md) - C1–C5 evaluation matrix
+- [`thesis.md`](./thesis.md) - chapter mapping and research framing

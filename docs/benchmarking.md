@@ -165,22 +165,22 @@ just build-host
 ### 5.2 Per conditie
 
 ```bash
-# C1 — native libusb (C)
+# C1 - native libusb (C)
 cmake -B usb-bench-c/build-native usb-bench-c
 cmake --build usb-bench-c/build-native
 
-# C2 — wasi-libusb (C WASM)
+# C2 - wasi-libusb (C WASM)
 cmake -B usb-bench-c/build-wasi usb-bench-c \
     -DCMAKE_TOOLCHAIN_FILE=usb-bench-c/toolchain-wasi.cmake
 cmake --build usb-bench-c/build-wasi
 
-# C3 — native rusb (Rust)
+# C3 - native rusb (Rust)
 cargo build --release --bins --manifest-path usb-bench-rs/Cargo.toml
 
-# C4 — wasi-rusb (Rust + rusb → libusb-wasi.a → WIT)
+# C4 - wasi-rusb (Rust + rusb → libusb-wasi.a → WIT)
 bash bench/build-c4.sh
 
-# C5 — wasi-raw-wit (Rust WASM)
+# C5 - wasi-raw-wit (Rust WASM)
 cargo build --release --bins --target wasm32-wasip2 \
     --manifest-path usb-bench-rs/Cargo.toml
 ```
@@ -189,13 +189,13 @@ cargo build --release --bins --target wasm32-wasip2 \
 
 **Eenmalige stap vóór de eerste C4-build.**
 
-`libusb-wasi.a` (Robbe Leroy's WIT-backed libusb) bevat `cguest.o` — een
+`libusb-wasi.a` (Robbe Leroy's WIT-backed libusb) bevat `cguest.o` - een
 C-gegenereerd WIT-bindingsobject. Dat object werkt goed voor C-binaries (C2),
 maar is incompatibel met Rust's `wasm-component-ld` door een C-specifieke
 run-export handler. Zie [sectie 9](#9-technische-diepte-c4-implementatie) voor
 de volledige technische uitleg.
 
-De fix: maak `libusb-wasi-rust.a` — hetzelfde archief maar met `cguest.o`
+De fix: maak `libusb-wasi-rust.a` - hetzelfde archief maar met `cguest.o`
 waarvan de run-export handler als interne (niet-geëxporteerde) functie is
 gemarkeerd, zodat `--gc-sections` hem verwijdert.
 
@@ -289,23 +289,23 @@ Resultaten worden weggeschreven naar `results/<ISO-timestamp>/`.
 ### Handmatig één binary draaien
 
 ```bash
-# C1 — native libusb
+# C1 - native libusb
 sudo usb-bench-c/build-native/w_ctrl output.csv cafe:4002 100 --condition native-libusb
 
-# C2 — wasi-libusb
+# C2 - wasi-libusb
 sudo usb-wasi-host/target/release/usb-wasi-host \
     -c usb-bench-c/build-wasi/w_ctrl.wasm -- \
     output.csv cafe:4002 100 --condition wasi-libusb
 
-# C3 — native rusb
+# C3 - native rusb
 sudo usb-bench-rs/target/release/w_ctrl output.csv cafe:4002 100 --condition native-rusb
 
-# C4 — wasi-rusb  ← nieuw
+# C4 - wasi-rusb  ← nieuw
 sudo usb-wasi-host/target/release/usb-wasi-host \
     -c usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/w_ctrl.wasm -- \
     output.csv cafe:4002 100 --condition wasi-rusb
 
-# C5 — wasi-raw-wit
+# C5 - wasi-raw-wit
 sudo usb-wasi-host/target/release/usb-wasi-host \
     -c usb-bench-rs/target/wasm32-wasip2/release/w_ctrl.wasm -- \
     output.csv cafe:4002 100 --condition wasi-raw-wit
@@ -339,13 +339,13 @@ python3 bench/analyze.py results/... --plots out/figs/
 ```
 
 Het analyse-script produceert:
-1. **Correctheidstabel** — SHA-256 checksums per workload over alle 5 condities
-2. **Doorvoer-staafdiagram** — MB/s per conditie (W-bulk, W-iso)
-3. **RTT-violinplot** — verdeling per conditie (W-ctrl, W-int)
-4. **CPU-gebruik** — user vs sys-tijd per conditie
-5. **Memory-gebruik** — RSS-piek + guest-linear-memory (WASM-condities)
-6. **Wrapper-overhead** — C4 vs C5 vergelijking (rusb-belasting)
-7. **Statistische toetsen** — Mann-Whitney U + Cliff's delta per paar
+1. **Correctheidstabel** - SHA-256 checksums per workload over alle 5 condities
+2. **Doorvoer-staafdiagram** - MB/s per conditie (W-bulk, W-iso)
+3. **RTT-violinplot** - verdeling per conditie (W-ctrl, W-int)
+4. **CPU-gebruik** - user vs sys-tijd per conditie
+5. **Memory-gebruik** - RSS-piek + guest-linear-memory (WASM-condities)
+6. **Wrapper-overhead** - C4 vs C5 vergelijking (rusb-belasting)
+7. **Statistische toetsen** - Mann-Whitney U + Cliff's delta per paar
 
 ---
 
@@ -509,7 +509,7 @@ use native::CtrlDevice as ActiveDevice;
 use wasm::CtrlDevice as ActiveDevice;
 ```
 
-Hierdoor is de **broncode identiek voor C3 en C4** — het enige verschil zit
+Hierdoor is de **broncode identiek voor C3 en C4** - het enige verschil zit
 in de build-configuratie (target + feature + linker), wat de
 *source-portability*-claim van de thesis direct bewijst.
 

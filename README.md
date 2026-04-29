@@ -1,4 +1,4 @@
-# WASI-USB — Thesis Implementation
+# WASI-USB - Thesis Implementation
 
 Master's thesis implementation by **Sibren Wieme** (IDLab Discover, Ghent University, 2025–2026).
 
@@ -17,7 +17,7 @@ WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAsse
 | # | Author | Year | Contribution |
 |---|--------|------|--------------|
 | 1 | Wouter Hennen + Warre Dujarding | 2024 | Initial WIT-based host runtime; control + bulk transfers |
-| 2 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
+| 2 | Robbe Leroy | 2025 | `libusb-wasi.a` - WASI backend inside libusb |
 | **3** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
 
 **Champions / contributors:** Merlijn Sebrechts (champion), Michiel Van Kenhove, Friedrich Vandenberghe, Sibren Wieme
@@ -37,7 +37,7 @@ WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAsse
 
 ```
 .
-├── wit/                    # WIT source — component:usb@0.2.1
+├── wit/                    # WIT source - component:usb@0.2.1
 │   ├── device.wit          # USB device management + hotplug
 │   ├── transfers.wit       # Transfer types, options, results (incl. ISO extension)
 │   ├── descriptors.wit     # Device/config/interface/endpoint descriptors
@@ -50,14 +50,14 @@ WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAsse
 │   │   ├── main.rs         # WIT method implementations, CLI, transfer callback, Wasmtime setup
 │   │   ├── usb_backend.rs  # HostUsbBackend trait + LibusbBackend implementation
 │   │   ├── host.rs         # Generated WIT bindings (do not edit)
-│   │   └── instrument.rs   # RAII CallTrace guard — per-call duration + ctx-switch tracing
+│   │   └── instrument.rs   # RAII CallTrace guard - per-call duration + ctx-switch tracing
 │   └── Cargo.toml
 ├── usb-wasi-guest/         # Rust guest library + examples
 │   └── examples/
 │       ├── webcam/         # UVC webcam capture (sub-crate)
 │       ├── mass-storage/   # FAT32 mass storage (sub-crate)
-│       ├── ps5-maze/       # Pacman — PS5/Xbox (sub-crate)
-│       ├── xbox-maze/      # Pacman — Xbox (sub-crate)
+│       ├── ps5-maze/       # Pacman - PS5/Xbox (sub-crate)
+│       ├── xbox-maze/      # Pacman - Xbox (sub-crate)
 │       ├── enumerate-devices-go/  # TinyGo device lister
 │       ├── lsusb.rs        # Detailed USB device listing
 │       ├── enumerate-devices-rust.rs
@@ -94,7 +94,7 @@ just build-host
 # List connected USB devices
 just lsusb
 
-# Webcam demo (UVC, sudo required) — frames written to out/latest.jpg
+# Webcam demo (UVC, sudo required) - frames written to out/latest.jpg
 mkdir -p out
 just webcam
 
@@ -148,10 +148,10 @@ See **[docs/benchmarking.md](docs/benchmarking.md)** for the full methodology.
 
 | Document | Contents |
 |----------|----------|
-| **[docs/architecture.md](docs/architecture.md)** | System architecture — host/guest layering, WIT design, capability model, async transfer pattern, threading model |
-| **[docs/implementation.md](docs/implementation.md)** | Concrete contributions — backend abstraction, ISO extension, bug fixes, C4 pipeline, UVC guest, benchmark suite |
+| **[docs/architecture.md](docs/architecture.md)** | System architecture - host/guest layering, WIT design, capability model, async transfer pattern, threading model |
+| **[docs/implementation.md](docs/implementation.md)** | Concrete contributions - backend abstraction, ISO extension, bug fixes, C4 pipeline, UVC guest, benchmark suite |
 | **[docs/benchmarking.md](docs/benchmarking.md)** | C1–C5 benchmark methodology, workloads, hardware, analysis |
-| **[docs/compiling.md](docs/compiling.md)** | Build instructions — host, all guest examples, all five benchmark conditions, cross-compile sysroot |
+| **[docs/compiling.md](docs/compiling.md)** | Build instructions - host, all guest examples, all five benchmark conditions, cross-compile sysroot |
 | **[docs/thesis.md](docs/thesis.md)** | Thesis context, claimed contributions, doc-to-chapter mapping, defense cheat-sheet |
 
 Diagrams (PlantUML sources + rendered SVG) live in [`diagrams/`](diagrams/):
@@ -169,10 +169,10 @@ plantuml -tpdf diagrams/*.puml   # PDF (for LaTeX)
 
 ## WIT design notes
 
-- `flags event { arrived; left; }` — bitflags, not an enum. Check `Event::ARRIVED` / `Event::LEFT`.
-- `await-transfer(borrow<transfer>) -> result<transfer-result, libusb-error>` — borrow semantics; the host must **not** delete the borrow slot.
-- Isochronous results: `TransferResult { data: list<u8>, packets: list<iso-packet> }` — flat buffer + sidecar metadata (one memcpy per transfer through the component ABI).
-- `enable-hotplug` returns `result<_, libusb-error>` — no pollable; guest calls `poll-events` to drain the queue.
+- `flags event { arrived; left; }` - bitflags, not an enum. Check `Event::ARRIVED` / `Event::LEFT`.
+- `await-transfer(borrow<transfer>) -> result<transfer-result, libusb-error>` - borrow semantics; the host must **not** delete the borrow slot.
+- Isochronous results: `TransferResult { data: list<u8>, packets: list<iso-packet> }` - flat buffer + sidecar metadata (one memcpy per transfer through the component ABI).
+- `enable-hotplug` returns `result<_, libusb-error>` - no pollable; guest calls `poll-events` to drain the queue.
 
 ---
 

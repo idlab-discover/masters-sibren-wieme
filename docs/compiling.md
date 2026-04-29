@@ -76,10 +76,10 @@ just bench-build
 ```
 
 This runs:
-1. **C1** — `cmake -B benchmarks/usb-bench-c/build-native benchmarks/usb-bench-c`
-2. **C2** — `cmake -B benchmarks/usb-bench-c/build-wasi benchmarks/usb-bench-c -DCMAKE_TOOLCHAIN_FILE=...`
-3. **C3+C5** — `cargo build --release --bins --manifest-path benchmarks/usb-bench-rs/Cargo.toml`
-4. **C4** — `bash benchmarks/build-c4.sh` (pkg-config cross-compile via WASI sysroot)
+1. **C1** - `cmake -B benchmarks/usb-bench-c/build-native benchmarks/usb-bench-c`
+2. **C2** - `cmake -B benchmarks/usb-bench-c/build-wasi benchmarks/usb-bench-c -DCMAKE_TOOLCHAIN_FILE=...`
+3. **C3+C5** - `cargo build --release --bins --manifest-path benchmarks/usb-bench-rs/Cargo.toml`
+4. **C4** - `bash benchmarks/build-c4.sh` (pkg-config cross-compile via WASI sysroot)
 
 ### 5.2 Run benchmarks
 
@@ -95,7 +95,7 @@ just bench-analyze      # analyse most recent results/
 C4 cross-compiles the Rust rusb benchmarks to `wasm32-wasip2` by directing
 `pkg-config` to a custom WASI sysroot that points to `libusb-wasi.a` instead
 of the host's system libusb. This follows the approach documented in
-[libusb1-sys README — Cross-Compiling](https://github.com/dcuddeback/libusb1-sys#cross-compiling).
+[libusb1-sys README - Cross-Compiling](https://github.com/dcuddeback/libusb1-sys#cross-compiling).
 
 The sysroot lives at `sysroot-wasi/` and the wrapper script is `benchmarks/build-c4.sh`.
 
@@ -135,7 +135,7 @@ The cguest bindings bridge `wasi_usb.c` to the WASI-USB interface:
 | `cguest.o` | Generated C code calling the WASI-USB functions |
 | `cguest_component_type.o` | Metadata: `component-type:cguest` custom section describing the full WIT world |
 
-The build product is `libusb-wasi.a` — a static archive combining all object files.
+The build product is `libusb-wasi.a` - a static archive combining all object files.
 
 **Current limitation:** only synchronous transfers are supported. Asynchronous transfers
 require threading support not yet standardised in WASI/Wasmtime.
@@ -180,7 +180,7 @@ The component-type metadata (`guest_component_type.o`) is linked via `benchmarks
 | Aspect | libusb-wasi | rusb → WASM (C4) |
 |--------|-------------|-----------------|
 | Author | Robbe Leroy | pkg-config cross-compile config |
-| Code changes needed | None | None — only build config |
+| Code changes needed | None | None - only build config |
 | Key mechanism | New `wasi_usb.c` WASI backend | `PKG_CONFIG_LIBDIR` redirect |
 | Link target | `libusb-wasi.a` | `libusb-wasi.a` via sysroot |
 | Build product | `libusb-wasi.a` | `.wasm` component |
@@ -191,7 +191,7 @@ The component-type metadata (`guest_component_type.o`) is linked via `benchmarks
 ## 7. Troubleshooting
 
 - **`LIBUSB_ERROR_ACCESS`**: USB access requires root. Always use `sudo`.
-- **`libusb-wasi.a not found`**: Build from `libusb-wasi/` first — see its `BUILDING_WASI.md`.
+- **`libusb-wasi.a not found`**: Build from `libusb-wasi/` first - see its `BUILDING_WASI.md`.
 - **`guest_component_type.o not found`**: Run the C2 cmake build step first.
 - **`error: could not find Cargo.toml`**: Run cargo commands from the crate root directory.
 - **`SCSI Command Failed`**: Unmount the USB drive before running mass-storage benchmarks.

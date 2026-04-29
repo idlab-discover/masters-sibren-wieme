@@ -1,4 +1,4 @@
-# Thesis — context, scope and chapter mapping
+# Thesis - context, scope and chapter mapping
 
 This document situates the codebase within the master's thesis it supports.
 It serves three audiences:
@@ -22,7 +22,7 @@ The thesis manuscript itself lives under `Masterproef_Sibren_Overleaf/`
 Cyber-Physical IoT**
 
 ### Author
-Sibren Wieme — Master of Science in Computer Science Engineering,
+Sibren Wieme - Master of Science in Computer Science Engineering,
 Faculty of Engineering and Architecture, Ghent University, 2025–2026.
 
 ### Promotors and counsellors
@@ -37,7 +37,7 @@ at IDLab Discover:
 |---|--------|------|--------------|
 | 1 | Wouter Hennen | 2024 | Initial WIT-based host runtime; control + bulk transfers |
 | 2 | Friedrich Vandenberghe | 2024 | WASI-I²C (parallel hardware bus) |
-| 3 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
+| 3 | Robbe Leroy | 2025 | `libusb-wasi.a` - WASI backend inside libusb |
 | **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
 
 The framework also draws on the broader cyber-physical WebAssembly research
@@ -100,15 +100,15 @@ When writing or defending a chapter, these are the docs to consult:
 
 | If asked … | Refer to |
 |------------|----------|
-| "Why a flat buffer for ISO?" | [`implementation.md`](./implementation.md) §2 — rejected alternatives |
-| "Why a trait for the backend?" | [`implementation.md`](./implementation.md) §1 — design rationale |
-| "How does rusb-wasi work without forking rusb?" | [`implementation.md`](./implementation.md) §6 — pkg-config pipeline |
-| "What does the host actually do for UVC?" | [`implementation.md`](./implementation.md) §7 — "host has zero UVC code" |
-| "How is WASI-USB stronger than `--device=/dev/bus/usb`?" | [`architecture.md`](./architecture.md) §3.2 — comparison table |
-| "What broke and how was it fixed?" | [`implementation.md`](./implementation.md) §3 — three bug fixes with root causes |
-| "How do you measure WASI overhead?" | [`implementation.md`](./implementation.md) §5 — `instrument.rs`; [`benchmarking.md`](./benchmarking.md) — methodology |
+| "Why a flat buffer for ISO?" | [`implementation.md`](./implementation.md) §2 - rejected alternatives |
+| "Why a trait for the backend?" | [`implementation.md`](./implementation.md) §1 - design rationale |
+| "How does rusb-wasi work without forking rusb?" | [`implementation.md`](./implementation.md) §6 - pkg-config pipeline |
+| "What does the host actually do for UVC?" | [`implementation.md`](./implementation.md) §7 - "host has zero UVC code" |
+| "How is WASI-USB stronger than `--device=/dev/bus/usb`?" | [`architecture.md`](./architecture.md) §3.2 - comparison table |
+| "What broke and how was it fixed?" | [`implementation.md`](./implementation.md) §3 - three bug fixes with root causes |
+| "How do you measure WASI overhead?" | [`implementation.md`](./implementation.md) §5 - `instrument.rs`; [`benchmarking.md`](./benchmarking.md) - methodology |
 | "What does C1–C5 isolate?" | [`implementation.md`](./implementation.md) §8, [`benchmarking.md`](./benchmarking.md) |
-| "Why a libusb event thread + tokio oneshot?" | [`architecture.md`](./architecture.md) §5 — three concurrent domains |
+| "Why a libusb event thread + tokio oneshot?" | [`architecture.md`](./architecture.md) §5 - three concurrent domains |
 
 ---
 
@@ -116,13 +116,13 @@ When writing or defending a chapter, these are the docs to consult:
 
 The full chapter and section list of the thesis. Used as a writing checklist.
 
-### Chapter 1 — Introduction
+### Chapter 1 - Introduction
 - 1.1 Context (CPS, IoT, hardware access in containers)
 - 1.2 Motivation and Objective
 - 1.3 Scope
 - 1.4 Thesis Structure
 
-### Chapter 2 — Background and Related Work
+### Chapter 2 - Background and Related Work
 - 2.1 Cyber-Physical Systems and IoT
 - 2.2 Container Technology in IoT
 - 2.3 WebAssembly and WASI (Preview 3)
@@ -130,13 +130,13 @@ The full chapter and section list of the thesis. Used as a writing checklist.
 - 2.5 WebAssembly for IoT and Hardware Access
 - 2.6 Synthesis
 
-### Chapter 3 — Problem Statement
+### Chapter 3 - Problem Statement
 - 3.1 Current Situation
 - 3.2 Shortcomings of Existing Solutions
 - 3.3 Need for a New Framework
 - 3.4 Goal and Positioning of the Proposed Framework
 
-### Chapter 4 — System Architecture
+### Chapter 4 - System Architecture
 - 4.1 Framework Overview → [`architecture.md` §1](./architecture.md#1-high-level-layering)
 - 4.2 Security and Capability Model → [`architecture.md` §3](./architecture.md#3-capability-based-security-model)
 - 4.3 WIT Interfaces and WASI Preview 3 → [`architecture.md` §2](./architecture.md#2-wit-interface-design)
@@ -145,7 +145,7 @@ The full chapter and section list of the thesis. Used as a writing checklist.
 - 4.6 Guest Architecture and Use Cases → [`implementation.md` §7](./implementation.md#7-uvc-webcam-guest)
 - 4.7 Architectural Reflection
 
-### Chapter 5 — Implementation
+### Chapter 5 - Implementation
 - 5.1 Project and Code Structure → [README.md](../README.md)
 - 5.2 WIT Interface Implementation → [`implementation.md` §2](./implementation.md#2-isochronous-transfer-api)
 - 5.3 libusb Backend Integration → [`implementation.md` §1](./implementation.md#1-backend-abstraction--hostusbbackend-trait)
@@ -153,7 +153,7 @@ The full chapter and section list of the thesis. Used as a writing checklist.
 - 5.5 Host Runtime Implementation → [`implementation.md` §3, §4](./implementation.md#3-resource-lifecycle-bug-fixes)
 - 5.6 Multithreading in the Implementation → [`implementation.md` §4](./implementation.md#4-async-transfer--tokio-oneshot-pattern)
 
-### Chapter 6 — Use Cases and Experimental Setup
+### Chapter 6 - Use Cases and Experimental Setup
 - 6.1 Evaluation Goals → [`benchmarking.md` §1](./benchmarking.md)
 - 6.2 Proof-of-Concept Guest Applications
 - 6.3 Camera and Computer Vision Pipeline → [`implementation.md` §7](./implementation.md#7-uvc-webcam-guest)
@@ -163,7 +163,7 @@ The full chapter and section list of the thesis. Used as a writing checklist.
   - 6.5.2 Software Environment
   - 6.5.3 Workloads and Scenarios
 
-### Chapter 7 — Evaluation
+### Chapter 7 - Evaluation
 - 7.1 Performance: Latency and Throughput → [`benchmarking.md`](./benchmarking.md)
   - 7.1.1 Single-Threaded Baseline
   - 7.1.2 Multithreaded Scenarios
@@ -172,22 +172,22 @@ The full chapter and section list of the thesis. Used as a writing checklist.
 - 7.4 Security and Isolation Analysis → [`architecture.md` §3](./architecture.md#3-capability-based-security-model)
 - 7.5 Summary Evaluation
 
-### Chapter 8 — Discussion
+### Chapter 8 - Discussion
 - 8.1 Interpretation of Results
 - 8.2 Implications for IoT and CPS Deployments
 - 8.3 Trade-offs and Design Choices → [`implementation.md` §2](./implementation.md#2-isochronous-transfer-api) (rejected alternatives)
 - 8.4 Limitations of the Work → [`architecture.md` §3.3](./architecture.md#33-known-limitations)
 
-### Chapter 9 — Conclusion and Future Work
+### Chapter 9 - Conclusion and Future Work
 - 9.1 Summary of Contributions → §3 above
 - 9.2 Main Conclusions
 - 9.3 Proposals for Future Work
 
-### Chapter 10 — Societal Reflection
+### Chapter 10 - Societal Reflection
 - 10.1 Impact on Security and Privacy
 - 10.2 Ethical and Societal Considerations
 
-### Chapters 11–12 — References, Appendices
+### Chapters 11–12 - References, Appendices
 
 ---
 

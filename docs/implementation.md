@@ -1,4 +1,4 @@
-# Implementation — what was built and why
+# Implementation - what was built and why
 
 This document is the developer- and defense-facing record of the concrete
 contributions made in this work. For each contribution it gives:
@@ -35,7 +35,7 @@ with the `wasi_usb.c` backend and cguest bindings). Everything below is
 
 ---
 
-## 1. Backend Abstraction — `HostUsbBackend` Trait
+## 1. Backend Abstraction - `HostUsbBackend` Trait
 
 ### Problem
 
@@ -73,7 +73,7 @@ A generic `MyState<B: HostUsbBackend>` would force a backend choice at
 compile time and propagate the type parameter through every WIT impl,
 duplicating the binary if multiple backends were ever desired in one build.
 Dynamic dispatch through `Box<dyn …>` adds a single vtable indirection per
-USB call — completely negligible compared to the syscall and hardware
+USB call - completely negligible compared to the syscall and hardware
 latency that follows. The flexibility is worth the indirection.
 
 ### Why filter the allow-list inside the backend?
@@ -101,7 +101,7 @@ constant-bitrate USB device. Adding it required answering:
 3. How are variable-actual-length packets returned across the WASI ABI,
    which is severely restricted compared to native libusb?
 
-### Approach — flat-buffer + sidecar metadata
+### Approach - flat-buffer + sidecar metadata
 
 ```wit
 enum iso-packet-status {
@@ -142,9 +142,9 @@ The host:
 
 ![ISO flat-buffer strategy](../diagrams/iso_flatbuffer.svg)
 
-### Rejected alternatives — why not …
+### Rejected alternatives - why not …
 
-#### Alternative A — `list<list<u8>>`
+#### Alternative A - `list<list<u8>>`
 
 ```wit
 record transfer-result {
@@ -159,7 +159,7 @@ allocations is fragile and in some toolchain versions outright broken. A
 flat `list<u8>` is one ABI memcpy and decades of compiler optimization
 behind it.
 
-#### Alternative B — separate `await-iso-transfer`
+#### Alternative B - separate `await-iso-transfer`
 
 ```wit
 await-transfer:     func(...) -> result<list<u8>, libusb-error>;
@@ -177,7 +177,7 @@ A single `await-transfer` that returns `TransferResult { data, packets }`
 where `packets` is empty for non-iso transfers is cleaner. The guest
 trivially detects "is this iso?" by `if !result.packets.is_empty()`.
 
-#### Alternative C — pollable stream of frames
+#### Alternative C - pollable stream of frames
 
 Rejected because UVC frame *reassembly* (FID-bit tracking, header parsing,
 JPEG validation) is *guest* logic. The host should not know what UVC is. A
@@ -191,7 +191,7 @@ The C callback runs on the libusb event thread; `await_transfer` runs on the
 Tokio main thread. They communicate through the shared
 `Arc<Mutex<Option<Vec<(u32, i32)>>>>`. The `Option` is `None` until the
 callback fires, at which point it becomes `Some(vec)`. `await_transfer`
-then `take()`s the value, leaving `None` again — so the cell is reset for
+then `take()`s the value, leaving `None` again - so the cell is reset for
 any future re-submit on the same `UsbTransfer` (for transfers that get
 re-submitted in a tight loop, like the W-iso benchmark).
 
@@ -230,7 +230,7 @@ The buggy implementation called `self.table.delete(self_)` inside
 `await_transfer`, freeing slot M from underneath Wasmtime. After enough
 ISO transfers, the freed slot index coincided with the OutputStream's
 ResourceTable slot. The next `eprintln!` looked up that slot and found a
-`UsbTransfer` instead of an `OutputStream` — hence "resource is of another
+`UsbTransfer` instead of an `OutputStream` - hence "resource is of another
 type."
 
 #### Fix
@@ -259,7 +259,7 @@ async fn await_transfer(&mut self, self_: Resource<UsbTransfer>) -> Result<...> 
 The WASI component model's resource model is not "shared pointer with
 explicit free." It is "owned handle in K, transient borrow handle in M
 distinct from K." Borrow lifetime is Wasmtime's responsibility, not the
-host's. This is a **principled** design — once internalized — but the
+host's. This is a **principled** design - once internalized - but the
 failure mode (silent slot reuse) is sharp.
 
 ### 3.2 The three-state Drop
@@ -282,7 +282,7 @@ fn drop(&mut self, self_: Resource<UsbTransfer>) -> Result<(), Error> {
 This caused both a memory leak (transfers accumulate) and a use-after-free
 (libusb_cancel_transfer on a transfer the callback already freed).
 
-#### Fix — explicit state machine
+#### Fix - explicit state machine
 
 ```rust
 fn drop(&mut self, self_: Resource<UsbTransfer>) -> Result<(), Error> {
@@ -324,7 +324,7 @@ records sufficient state to disambiguate without race conditions.
 #### Symptom
 
 C2/C4 isochronous benchmark (`w_iso.c`) fails on iteration #2 with
-`LIBUSB_ERROR_BUSY` — a single re-used `libusb_transfer` cannot be
+`LIBUSB_ERROR_BUSY` - a single re-used `libusb_transfer` cannot be
 re-submitted.
 
 #### Root cause
@@ -346,7 +346,7 @@ After step 3, `IN_FLIGHT` is set on a transfer that already completed. The
 WASI event loop never clears it because there are no real fds to poll. The
 next iteration sees `IN_FLIGHT` → `BUSY`.
 
-#### Fix — defer completion to `wasm_handle_events`
+#### Fix - defer completion to `wasm_handle_events`
 
 In `libusb-wasi/libusb/os/wasi_usb.c`:
 
@@ -375,7 +375,7 @@ returns, not before. This is documented in libusb but not obvious.
 
 ---
 
-## 4. Async Transfer — Tokio Oneshot Pattern
+## 4. Async Transfer - Tokio Oneshot Pattern
 
 USB transfers are inherently async: `libusb_submit_transfer` returns
 immediately and the actual completion is signalled later via a C callback
@@ -408,7 +408,7 @@ extern "system" fn transfer_callback(transfer: *mut libusb_transfer) {
         ctx.completed.store(true, Ordering::SeqCst);
         let _ = ctx.sender.send(result);
         libusb_free_transfer(transfer);
-        // ctx drops here — buffer freed, sender consumed
+        // ctx drops here - buffer freed, sender consumed
     }
 }
 
@@ -434,7 +434,7 @@ async fn await_transfer(&mut self, self_: Resource<UsbTransfer>) -> ... {
 Two readers need to know whether the callback has fired:
 
 1. The C callback (writes `true`).
-2. `HostTransfer::drop` (reads to choose the cleanup path — see §3.2).
+2. `HostTransfer::drop` (reads to choose the cleanup path - see §3.2).
 
 `Arc` gives both ends a stable reference; `AtomicBool` lets the Drop path
 read-modify the flag without a mutex (the flag is at most one transition
@@ -443,7 +443,7 @@ fences so the C callback's store is observable to the Drop path.
 
 ---
 
-## 5. Instrumentation — `instrument.rs`
+## 5. Instrumentation - `instrument.rs`
 
 ### Problem
 
@@ -452,7 +452,7 @@ total transfer time is host-side overhead vs. USB bus time vs. Wasmtime
 boundary crossing. Without per-call data, the WASI overhead claim is
 unfalsifiable.
 
-### Approach — RAII trace guard
+### Approach - RAII trace guard
 
 ```rust
 pub struct CallTrace {
@@ -512,7 +512,7 @@ Parseable by a 5-line shell or Python script for the thesis evaluation.
 
 `/proc/self/status` exposes `voluntary_ctxt_switches` and
 `nonvoluntary_ctxt_switches`. Reading the file at trace-enter and
-trace-drop gives the delta during the call — a good proxy for OS
+trace-drop gives the delta during the call - a good proxy for OS
 scheduling pressure during host work. Skipped on non-Linux because no
 equivalent is portable.
 
@@ -526,7 +526,7 @@ C4 in the benchmark matrix is *Rust rusb code → wasm32-wasip2 component*.
 The expected approach was to fork `rusb` and `libusb1-sys`. That would
 mean maintaining patches against two upstream crates indefinitely.
 
-### Approach — pkg-config redirection (no forks)
+### Approach - pkg-config redirection (no forks)
 
 `libusb1-sys`'s build.rs probes `pkg-config` to find `libusb-1.0`. By
 publishing a tiny custom pkg-config file in a controlled sysroot and
@@ -575,7 +575,7 @@ wasm-tools print benchmarks/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/
     | grep "import .*component:usb"
 ```
 
-Lists the WIT imports — confirming the rusb call chain reaches the WIT
+Lists the WIT imports - confirming the rusb call chain reaches the WIT
 host runtime via `libusb-wasi.a`.
 
 ### Defense talking points
@@ -619,7 +619,7 @@ The guest at `usb-wasi-guest/examples/webcam/src/webcam.rs` performs:
 ```
 byte 0:  bHeaderLength  (typically 2 or 12)
 byte 1:  bmHeaderInfo
-  bit 0: FID  (Frame ID — toggles each new frame)
+  bit 0: FID  (Frame ID - toggles each new frame)
   bit 1: EOF  (end of frame)
   bit 2: PTS  (presentation time stamp)
   bit 3: SCR  (source clock reference)
@@ -648,7 +648,7 @@ next FID flip.
 This is the dumb-host claim. The host's `main.rs` does not parse UVC
 headers, does not understand frame boundaries, does not decode MJPEG. It
 only forwards raw bytes between libusb's iso descriptor array and the WIT
-boundary. All UVC logic — Probe/Commit, FID tracking, frame validation —
+boundary. All UVC logic - Probe/Commit, FID tracking, frame validation -
 is in `webcam.rs` (~700 lines of Rust running inside the Wasm sandbox).
 The host is reusable as-is for any USB device class.
 
@@ -657,7 +657,7 @@ The host is reusable as-is for any USB device class.
 | Platform | Status |
 |----------|--------|
 | Linux | Works end-to-end. `libusb_detach_kernel_driver` releases `uvcvideo`. |
-| macOS | UVC interface is held exclusively by `IOUSBDeviceFamily`. Iso transfers time out at 5 s with 0 bytes. **Not a framework limitation** — same restriction applies to native libusb. |
+| macOS | UVC interface is held exclusively by `IOUSBDeviceFamily`. Iso transfers time out at 5 s with 0 bytes. **Not a framework limitation** - same restriction applies to native libusb. |
 
 ---
 
@@ -704,8 +704,8 @@ crate. This isolates the WIT overhead from language choice.
 
 ## See also
 
-- [`architecture.md`](./architecture.md) — system as a whole
-- [`benchmarking.md`](./benchmarking.md) — C1–C5 evaluation matrix and results
-- [`compiling.md`](./compiling.md) — how to build everything
-- [`thesis.md`](./thesis.md) — chapter mapping
-- Diagrams in [`../diagrams/`](../diagrams/) — PlantUML sources + rendered SVG
+- [`architecture.md`](./architecture.md) - system as a whole
+- [`benchmarking.md`](./benchmarking.md) - C1–C5 evaluation matrix and results
+- [`compiling.md`](./compiling.md) - how to build everything
+- [`thesis.md`](./thesis.md) - chapter mapping
+- Diagrams in [`../diagrams/`](../diagrams/) - PlantUML sources + rendered SVG
