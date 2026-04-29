@@ -1,14 +1,11 @@
 # Architecture
 
 This document describes the architecture of the WASI-USB framework: the
-host/guest separation, the WIT interface design, the capability-based
-security model, the Rust host runtime, and the threading and resource-lifecycle
-patterns that make asynchronous USB transfers safe across the Wasm component
-boundary.
+host/guest split, the WIT interface design, the security model, the host runtime,
+and how async transfers work across the Wasm boundary.
 
-It is the canonical reference for what the system *is*; companion document
-[`implementation.md`](./implementation.md) describes what was *built* in this
-work - the contributions on top of prior work by Hennen and Leroy.
+For the *what was built* side - the actual contributions, design decisions, and
+bug fixes - see [`implementation.md`](./implementation.md).
 
 ---
 
@@ -16,7 +13,7 @@ work - the contributions on top of prior work by Hennen and Leroy.
 
 ![Host/Guest architecture](../diagrams/host_guest_arch.svg)
 
-The framework consists of five layers, separated cleanly by interface:
+The framework has five layers, each separated by a well-defined interface:
 
 | # | Layer | Purpose | Source |
 |---|-------|---------|--------|
@@ -26,12 +23,11 @@ The framework consists of five layers, separated cleanly by interface:
 | 4 | **Host runtime** | Wasmtime + Rust host that dispatches WIT methods, owns USB resources, enforces capabilities | `usb-wasi-host/` |
 | 5 | **OS USB stack** | libusb 1.0 + kernel driver (urb / IOUSBLib) | system |
 
-The fundamental design principle is **dumb host, smart guest**: the host
-exposes only generic USB primitives (open/claim/transfer). All
-protocol-specific logic - UVC Probe/Commit, MJPEG header parsing, FAT32
-traversal, HID report decoding - lives in the guest component. This is what
-makes the framework device-class-agnostic and the host runtime auditable as a
-small, fixed surface.
+The core idea is **dumb host, smart guest**: the host only exposes generic USB
+primitives (open/claim/transfer). All protocol-specific logic - UVC
+Probe/Commit, MJPEG header parsing, FAT32 traversal, HID report decoding - lives
+in the guest. This keeps the host small and auditable, and makes it usable for
+any USB device class without changes.
 
 ---
 
@@ -62,14 +58,14 @@ resource transfer       // returned by new-transfer(); submit/await/cancel/drop
 
 Resources are **opaque integer handles** on the guest side and live in the
 host's `wasmtime::component::ResourceTable`. The guest can hold a resource,
-pass it back to the host, or drop it - it cannot inspect or fabricate one.
-This is the foundation of the capability model: a guest can only act on
-devices the host has handed it.
+pass it back to the host, or drop it - but it can't inspect or fabricate one.
+This is the basis of the capability model: a guest can only act on devices the
+host explicitly hands to it.
 
 ### 2.2 Borrow vs Owned Semantics
 
-The single most subtle aspect of the WIT design is the distinction between
-**owned** and **borrow**ed resources:
+Probably the trickiest part of the WIT design is the owned vs. borrowed
+resource distinction:
 
 ```wit
 new-transfer:    func(...) -> result<transfer, libusb-error>;          // returns OWNED
@@ -79,11 +75,11 @@ cancel-transfer: func(self_: borrow<transfer>);                        // BORROW
 ```
 
 When the guest passes a `borrow<transfer>`, Wasmtime allocates a **temporary
-ResourceTable slot** for the duration of the host call, distinct from the
-slot that owns the resource. Wasmtime cleans up the borrow slot itself after
-the host call returns. The host **must not** call `table.delete` on a borrow
-slot - see [`implementation.md` §3.1](./implementation.md#31-the-borrow-bug)
-for the bug this caused.
+ResourceTable slot** for the duration of the host call, separate from the
+slot that owns the resource. Wasmtime cleans up that borrow slot itself after
+the call returns. The host **must not** call `table.delete` on it - see
+[`implementation.md` §3.1](./implementation.md#31-the-borrow-bug) for the
+bug this caused in practice.
 
 ### 2.3 Isochronous Transfer Extension
 
@@ -117,11 +113,11 @@ for pkt in &result.packets {
 }
 ```
 
-**Why flat instead of `list<list<u8>>`?** Nested growable lists are not
-supported in the stable component-model canonical ABI, so a flat buffer means
-exactly one ABI memcpy per transfer. The `packets` sidecar carries the
-slicing metadata. See [`implementation.md` §2](./implementation.md#2-isochronous-transfer-api)
-for the design rationale and rejected alternatives.
+**Why not `list<list<u8>>`?** Nested growable lists aren't reliably supported
+in the stable component-model canonical ABI. A flat buffer means exactly one
+ABI memcpy per transfer, with the `packets` sidecar carrying the slicing
+metadata. See [`implementation.md` §2](./implementation.md#2-isochronous-transfer-api)
+for the full rationale and the rejected alternatives.
 
 ---
 
@@ -129,10 +125,9 @@ for the design rationale and rejected alternatives.
 
 ![Capability model](../diagrams/capability_model.svg)
 
-### 3.1 Allow-List
+### 3.1 Allow-list
 
-The host accepts an explicit allow-list of `VendorID:ProductID` pairs at
-startup:
+At startup, the host takes an explicit allow-list of `VendorID:ProductID` pairs:
 
 ```bash
 sudo usb-wasi-host -c webcam.wasm \
@@ -163,9 +158,9 @@ pub enum AllowedUSBDevices {
 | Docker `--privileged` | Whole host | Full kernel access |
 | WASI-USB allow-list | VID:PID per guest | Guest has no `ioctl`, no `open("/dev/...")`, no `libusb_init` - only WIT surface |
 
-A compromised guest cannot enumerate beyond its allow-list because the Wasm
-sandbox provides no system call that reaches the host USB stack directly.
-The auditable surface is the WIT world declaration.
+A compromised guest can't enumerate beyond its allow-list because the Wasm
+sandbox has no system call that reaches the host USB stack directly.
+The only attack surface is the WIT world declaration.
 
 ### 3.3 Known Limitations
 
@@ -207,9 +202,8 @@ USB stack.
 ### 4.2 Backend Abstraction - `HostUsbBackend` trait
 
 The trait separates *what* USB operations exist from *how* they are
-implemented. This was a deliberate refactor: prior versions had libusb
-calls scattered throughout `main.rs`. Today every OS-level call goes through
-one of these methods:
+implemented. In earlier versions, libusb calls were scattered throughout
+`main.rs`; now every OS-level call goes through one of these methods:
 
 ```rust
 pub trait HostUsbBackend: Send + Sync {
@@ -224,15 +218,14 @@ pub trait HostUsbBackend: Send + Sync {
 }
 ```
 
-The shipped implementation is `LibusbBackend` (libusb1-sys FFI). A
-`RusbBackend` is a single-file replacement; a `MockBackend` for tests is
-similarly straightforward. **The guest is unaffected by backend choice** -
-the WIT contract is identical.
+The default implementation is `LibusbBackend` (libusb1-sys FFI). A `RusbBackend`
+is a single-file drop-in; a `MockBackend` for tests would look similar.
+**The guest doesn't know which backend is running** - the WIT contract is
+the same in all cases.
 
-Why this matters for the thesis: it is the architectural answer to
-*"libusb vs rusb - which is faster?"* - both can be measured under
-identical guest code by swapping the backend, isolating the Rust-vs-C
-question from the WIT-overhead question.
+This matters for the thesis because it lets us answer "libusb vs rusb - which is
+faster?" by swapping backends under identical guest code, keeping language choice
+separate from WASI overhead.
 
 ### 4.3 Resource Tables and Lifecycle
 
@@ -282,12 +275,11 @@ WIT method.
 
 ### 5.2 Why Oneshot, not mpsc
 
-A oneshot channel is exactly the right primitive: every transfer has
-**one** producer (the callback) and **one** consumer (the WIT
-`await-transfer`). There is no fan-in or fan-out. Using a Tokio oneshot
-rather than a `parking_lot::Condvar` lets us integrate with Wasmtime's async
-component support (`async: { only_imports: ["await-transfer"] }` in the
-bindgen invocation) without blocking the Tokio thread on a synchronous wait.
+A oneshot channel fits well here: every transfer has exactly **one** producer
+(the callback) and **one** consumer (`await-transfer`). There's no fan-in or
+fan-out. Using a Tokio oneshot rather than a `parking_lot::Condvar` means we
+integrate cleanly with Wasmtime's async component support without blocking the
+Tokio thread.
 
 ### 5.3 Memory Ownership
 
@@ -356,11 +348,10 @@ disabled.
 | Per-transfer state | `Arc<AtomicBool>` shared between C-callback and Rust drop path |
 
 There is no thread pool of guest instances; each `usb-wasi-host` invocation
-runs **one** guest. Multi-tenant gateways are deployed as multiple host
-processes, each with its own allow-list. This is a deliberate simplicity
-choice - multi-tenancy in a single process would complicate the capability
-model (per-instance allow-lists, per-instance backend state) without any
-isolation benefit over the OS process boundary.
+runs **one** guest. Multi-tenant setups run multiple host processes, each with
+its own allow-list. Running multiple guests in a single process would complicate
+the capability model (per-instance allow-lists, per-instance backend state)
+without gaining anything over just using separate OS processes.
 
 ---
 
@@ -368,5 +359,5 @@ isolation benefit over the OS process boundary.
 
 - [`implementation.md`](./implementation.md) - concrete contributions, design decisions, bug fixes
 - [`compiling.md`](./compiling.md) - how to build host + guests + benchmarks
-- [`benchmarking.md`](./benchmarking.md) - C1–C5 evaluation matrix
+- [`benchmarking.md`](./benchmarking.md) - C1-C5 evaluation matrix
 - [`thesis.md`](./thesis.md) - chapter mapping and research framing

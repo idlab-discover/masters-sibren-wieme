@@ -1,7 +1,7 @@
 # Compiling and Benchmarking WASI-USB
 
-This document covers how to build all components of the WASI-USB project: the host runtime,
-guest examples, and the full benchmark suite (conditions C1–C5).
+This document explains how to build the different parts of the WASI-USB project: the host runtime,
+the guest examples, and the benchmark suite (conditions C1-C5).
 
 ---
 
@@ -57,7 +57,7 @@ Examples are written to `out/*.wasm`.
 
 ---
 
-## 5. Benchmark Suite (C1–C5)
+## 5. Benchmark Suite (C1-C5)
 
 The benchmark suite evaluates five conditions across four USB workloads:
 

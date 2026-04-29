@@ -1,22 +1,18 @@
 # Implementation - what was built and why
 
-This document is the developer- and defense-facing record of the concrete
-contributions made in this work. For each contribution it gives:
+This document covers the concrete contributions made in this work. For each
+one it explains what it is, why it was needed, why this particular approach
+was chosen, and where to find the code.
 
-- **what** the addition is,
-- **why** it was needed (the problem it solves),
-- **why this approach** rather than the alternatives,
-- **where** to find the code (file + section).
-
-It complements [`architecture.md`](./architecture.md), which describes what
-the system *is* once finished. The split is deliberate: the architecture doc
-reads as if everything had always been there; this doc reads as a logbook of
-deliberate decisions.
+It goes together with [`architecture.md`](./architecture.md), which describes
+the finished system. The architecture doc is a static description of the design;
+this one explains the choices and trade-offs behind it, including things that
+didn't work on the first try.
 
 The starting point is the prior work of **Wouter Hennen** (initial WIT-based
 host, single-backend, synchronous-only) and **Robbe Leroy** (`libusb-wasi.a`
-with the `wasi_usb.c` backend and cguest bindings). Everything below is
-**on top of** that baseline.
+with the `wasi_usb.c` backend and cguest bindings). Everything described below
+is built on top of that baseline.
 
 ---
 
@@ -31,7 +27,7 @@ with the `wasi_usb.c` backend and cguest bindings). Everything below is
 | 5 | Host instrumentation (`instrument.rs`) | `usb-wasi-host/src/instrument.rs` | §5 |
 | 6 | C4 cross-compile pipeline (rusb → WASM, no fork) | `sysroot-wasi/`, `benchmarks/build-c4.sh` | §6 |
 | 7 | UVC webcam guest (smart-guest CPS workload) | `usb-wasi-guest/examples/webcam/` | §7 |
-| 8 | Five-condition benchmark suite (C1–C5) | `benchmarks/usb-bench-c/`, `benchmarks/usb-bench-rs/` | [`benchmarking.md`](./benchmarking.md) |
+| 8 | Five-condition benchmark suite (C1-C5) | `benchmarks/usb-bench-c/`, `benchmarks/usb-bench-rs/` | [`benchmarking.md`](./benchmarking.md) |
 
 ---
 
@@ -80,11 +76,10 @@ latency that follows. The flexibility is worth the indirection.
 
 `list_devices(&mut self, allowed: &AllowedUSBDevices)` takes the allow-list
 as a parameter and filters during the libusb enumeration loop. This means a
-disallowed device is *never* assigned a `Resource` and is never visible to
-the `MyState::table` at all. If the filter were applied higher up (after
-the backend returned), a future capability bug elsewhere in the host could
-expose disallowed devices. Push the policy down to where the data
-originates.
+disallowed device is *never* assigned a `Resource` and never reaches
+`MyState::table`. If the filter were applied higher up (after the backend
+returned), a future bug elsewhere in the host could accidentally expose
+disallowed devices. Better to keep the policy where the data originates.
 
 ---
 
@@ -199,11 +194,11 @@ re-submitted in a tight loop, like the W-iso benchmark).
 
 ## 3. Resource-Lifecycle Bug Fixes
 
-Three bugs in inherited code were fixed during this work. Each was found by
-running real workloads (the webcam, the W-iso benchmark, the tight-loop
-control transfer test) and is documented here because they reveal subtle
-properties of the WASI component model and libusb that any future contributor
-needs to know.
+Three bugs in the inherited code were found and fixed during this work. All
+three showed up when running real workloads (the webcam, the W-iso benchmark,
+the tight-loop control transfer test). They're documented here because they
+reveal non-obvious properties of the WASI component model and libusb that are
+easy to get wrong.
 
 ### 3.1 The borrow bug
 
@@ -254,13 +249,13 @@ async fn await_transfer(&mut self, self_: Resource<UsbTransfer>) -> Result<...> 
 }
 ```
 
-#### Defense lesson
+#### Key takeaway
 
 The WASI component model's resource model is not "shared pointer with
-explicit free." It is "owned handle in K, transient borrow handle in M
-distinct from K." Borrow lifetime is Wasmtime's responsibility, not the
-host's. This is a **principled** design - once internalized - but the
-failure mode (silent slot reuse) is sharp.
+explicit free." It's "owned handle in K, transient borrow handle in M
+distinct from K." Borrow lifetime is Wasmtime's responsibility. The design is
+principled once you understand it, but the failure mode (silent slot reuse)
+is nasty because the symptom looks completely unrelated to the actual cause.
 
 ### 3.2 The three-state Drop
 
@@ -312,7 +307,7 @@ fn drop(&mut self, self_: Resource<UsbTransfer>) -> Result<(), Error> {
 | In flight | `false` | `Some` | `libusb_cancel_transfer` |
 | Allocated only | `false` | `None` | `libusb_free_transfer` |
 
-#### Defense lesson
+#### Key takeaway
 
 Async resource cleanup is **not** symmetric with allocation. A submitted
 transfer may complete on a different thread before drop runs, may be in
@@ -366,12 +361,12 @@ list_for_each_entry(itransfer, &ctx->flying_transfers, list, ...) {
 }
 ```
 
-#### Defense lesson
+#### Key takeaway
 
-A synchronous backend in an async-by-design host is an impedance mismatch.
-The fix is the textbook "defer to the event loop" pattern, but spotting the
-bug requires understanding that `IN_FLIGHT` is set *after* the backend
-returns, not before. This is documented in libusb but not obvious.
+A synchronous backend in an async-by-design host is a mismatch. The fix is
+the standard "defer to the event loop" pattern, but spotting the bug requires
+knowing that `IN_FLIGHT` is set *after* the backend returns. This is
+documented in libusb but easy to miss.
 
 ---
 
@@ -422,12 +417,11 @@ async fn await_transfer(&mut self, self_: Resource<UsbTransfer>) -> ... {
 
 ### Why oneshot, not Condvar / mpsc / pollable
 
-- **One producer, one consumer**: oneshot is exactly the right shape.
+- **One producer, one consumer**: oneshot fits exactly.
 - **Tokio integration**: `Receiver::await` cooperates with Wasmtime's async
-  component support without blocking the executor. A `Condvar` would block
-  a Tokio worker thread.
-- **No fan-in**: only one transfer per resource, so no need for `mpsc`
-  buffering.
+  component support without blocking the executor. A `Condvar` would block a
+  Tokio worker thread.
+- **No fan-in**: one transfer per resource, so `mpsc` buffering isn't needed.
 
 ### Why `Arc<AtomicBool>` for `completed`
 
@@ -498,15 +492,15 @@ Output (with `RUST_LOG=wasi_usb_trace=info`):
 
 Parseable by a 5-line shell or Python script for the thesis evaluation.
 
-### Why RAII rather than function-entry/exit pairs
+### Why RAII rather than entry/exit pairs
 
-- **Cannot forget to log on early-return paths**. A function that returns
+- **No missed logs on early returns**: a function returning
   `Err(LibusbError::Busy)` at the top still logs.
 - **Composable**: the `.detail()` builder lets each method add context
   without a shared logging utility.
-- **Zero cost when disabled**: the `log_enabled!` check is one atomic
-  load (~1 ns); `Instant::now()` is ~20 ns; `/proc/self/status` is gated
-  behind the same check so it's only paid when the trace is on.
+- **Zero cost when disabled**: the `log_enabled!` check is one atomic load
+  (~1 ns); `Instant::now()` is ~20 ns; `/proc/self/status` is only read when
+  the trace is actually enabled.
 
 ### Linux-only ctx-switch counters
 
@@ -578,23 +572,22 @@ wasm-tools print benchmarks/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/
 Lists the WIT imports - confirming the rusb call chain reaches the WIT
 host runtime via `libusb-wasi.a`.
 
-### Defense talking points
+### Key points for the defense
 
-- **Zero upstream patches**. `rusb` and `libusb1-sys` from crates.io
-  unchanged. The whole adaptation is one `.pc` file and an env-var.
-- **Drop-in claim**: a Rust developer with existing rusb code only adds the
-  build wrapper.
-- **Isolates the WIT-overhead measurement**. C3 and C4 use the *same*
-  Rust source. Differences are entirely in the link target →
-  measured overhead is purely WASI-USB.
+- **No upstream patches**. `rusb` and `libusb1-sys` from crates.io are
+  completely unchanged. The whole adaptation is one `.pc` file and an env-var.
+- **Drop-in for existing Rust code**: a developer with existing rusb code only
+  needs to add the build wrapper.
+- **Clean overhead measurement**: C3 and C4 use the *same* Rust source.
+  Any difference in results is purely from the WASI-USB layer.
 
 ---
 
 ## 7. UVC Webcam Guest
 
-The webcam is the framework's representative cyber-physical workload. It
-demonstrates that complex, time-sensitive USB device-class protocols can
-run entirely inside the Wasm sandbox.
+The webcam guest is a good concrete example of what the framework can do:
+a complex, time-sensitive USB protocol (UVC) running entirely inside the
+Wasm sandbox.
 
 ### Pipeline
 
@@ -640,17 +633,17 @@ next FID flip.
 | Packets per transfer | 32 | balance between submit overhead and bus utilisation |
 | Packet size (HS) | 1024 B | `wMaxPacketSize` for USB 2.0 HS iso |
 | Buffer per transfer | 32 × 1024 = 32 KiB | flat buffer (see §2) |
-| Frame size (640×480 MJPEG) | 20–40 KiB | scene-dependent |
+| Frame size (640×480 MJPEG) | 20-40 KiB | scene-dependent |
 | Frame rate | 30 fps | UVC negotiated |
 
 ### Why the host has zero UVC code
 
-This is the dumb-host claim. The host's `main.rs` does not parse UVC
-headers, does not understand frame boundaries, does not decode MJPEG. It
-only forwards raw bytes between libusb's iso descriptor array and the WIT
-boundary. All UVC logic - Probe/Commit, FID tracking, frame validation -
-is in `webcam.rs` (~700 lines of Rust running inside the Wasm sandbox).
-The host is reusable as-is for any USB device class.
+The host's `main.rs` doesn't parse UVC headers, doesn't understand frame
+boundaries, doesn't decode MJPEG. It only forwards raw bytes between libusb's
+iso descriptor array and the WIT boundary. All UVC logic - Probe/Commit, FID
+tracking, frame validation - lives in `webcam.rs` (~700 lines of Rust inside
+the Wasm sandbox). This is the dumb-host principle in practice: the host is
+reusable as-is for any USB device class.
 
 ### Platform note
 
@@ -705,7 +698,7 @@ crate. This isolates the WIT overhead from language choice.
 ## See also
 
 - [`architecture.md`](./architecture.md) - system as a whole
-- [`benchmarking.md`](./benchmarking.md) - C1–C5 evaluation matrix and results
+- [`benchmarking.md`](./benchmarking.md) - C1-C5 evaluation matrix and results
 - [`compiling.md`](./compiling.md) - how to build everything
 - [`thesis.md`](./thesis.md) - chapter mapping
 - Diagrams in [`../diagrams/`](../diagrams/) - PlantUML sources + rendered SVG

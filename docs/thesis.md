@@ -1,14 +1,14 @@
 # Thesis - context, scope and chapter mapping
 
-This document situates the codebase within the master's thesis it supports.
-It serves three audiences:
+This document links the codebase to the master's thesis manuscript.
+It's meant as a reference for three groups:
 
-1. **The reader of this repo** who wants to know which thesis chapter
-   discusses each piece of code.
-2. **The defense committee** who wants to map claims in the manuscript to
+1. **Readers of the repo** who want to know which thesis chapter discusses
+   a piece of code.
+2. **The defense committee** who want to map claims in the manuscript to
    evidence in the source tree.
-3. **The author** writing remaining chapters and needing a quick reference
-   to which docs back which arguments.
+3. **Me** writing the remaining chapters and needing a quick overview of
+   which docs cover which arguments.
 
 The thesis manuscript itself lives under `Masterproef_Sibren_Overleaf/`
 (gitignored, kept in sync with Overleaf).
@@ -23,7 +23,7 @@ Cyber-Physical IoT**
 
 ### Author
 Sibren Wieme - Master of Science in Computer Science Engineering,
-Faculty of Engineering and Architecture, Ghent University, 2025–2026.
+Faculty of Engineering and Architecture, Ghent University, 2025-2026.
 
 ### Promotors and counsellors
 - **Promotors**: Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
@@ -38,7 +38,7 @@ at IDLab Discover:
 | 1 | Wouter Hennen | 2024 | Initial WIT-based host runtime; control + bulk transfers |
 | 2 | Friedrich Vandenberghe | 2024 | WASI-I²C (parallel hardware bus) |
 | 3 | Robbe Leroy | 2025 | `libusb-wasi.a` - WASI backend inside libusb |
-| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
+| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1-C5 benchmark evaluation** |
 
 The framework also draws on the broader cyber-physical WebAssembly research
 of Van Kenhove et al.
@@ -47,7 +47,7 @@ of Van Kenhove et al.
 
 ## 2. Research objectives
 
-The thesis pursues four objectives:
+The thesis has four main objectives:
 
 1. **Architecture**. Design a system architecture integrating a WebAssembly
    host runtime, guest modules, and multiple USB backends under a
@@ -66,8 +66,8 @@ The thesis pursues four objectives:
 
 ## 3. Contributions claimed
 
-The thesis claims five concrete contributions, each with code in this repo
-and discussion in the manuscript:
+Five concrete contributions form the core of the thesis, each with code in
+this repo and a corresponding section in the manuscript:
 
 | # | Claim | Code | Manuscript section |
 |---|-------|------|---------------------|
@@ -75,22 +75,22 @@ and discussion in the manuscript:
 | 2 | Dual-backend host runtime via `HostUsbBackend` trait | `usb-wasi-host/src/usb_backend.rs` | Ch 4 §4.4, Ch 5 §5.3 |
 | 3 | rusb→WASM cross-compile (no upstream forks) | `sysroot-wasi/`, `benchmarks/build-c4.sh` | Ch 5 §5.4 |
 | 4 | UVC webcam CPS workload (entire UVC stack in Wasm) | `usb-wasi-guest/examples/webcam/` | Ch 6 §6.3, Ch 7 §7.2 |
-| 5 | Five-condition (C1–C5) systematic benchmark evaluation | `benchmarks/`, `bench/run.sh`, `bench/analyze.py` | Ch 6 §6.4, Ch 7 §7.1 |
+| 5 | Five-condition (C1-C5) systematic benchmark evaluation | `benchmarks/`, `bench/run.sh`, `bench/analyze.py` | Ch 6 §6.4, Ch 7 §7.1 |
 
 ---
 
-## 4. Documentation ↔ chapter mapping
+## 4. Documentation - chapter mapping
 
-When writing or defending a chapter, these are the docs to consult:
+Per chapter, these are the docs to look at:
 
 | Chapter | Title (LaTeX file) | Supporting docs |
 |---------|-------------------|----------------|
 | 1 | Introduction | This file (§1, §2) |
 | 2 | Background and Related Work | This file (§1.5 prior work) |
 | 3 | Problem Statement | [`architecture.md`](./architecture.md) §3 (capability vs containers) |
-| 4 | System Architecture | [`architecture.md`](./architecture.md) §1–§7 |
-| 5 | Implementation | [`implementation.md`](./implementation.md) §1–§7 |
-| 6 | Use Cases & Experimental Setup | [`implementation.md`](./implementation.md) §7–§8, [`benchmarking.md`](./benchmarking.md) |
+| 4 | System Architecture | [`architecture.md`](./architecture.md) §1-§7 |
+| 5 | Implementation | [`implementation.md`](./implementation.md) §1-§7 |
+| 6 | Use Cases & Experimental Setup | [`implementation.md`](./implementation.md) §7-§8, [`benchmarking.md`](./benchmarking.md) |
 | 7 | Evaluation | [`benchmarking.md`](./benchmarking.md), [`implementation.md`](./implementation.md) §5 (instrumentation) |
 | 8 | Discussion | [`architecture.md`](./architecture.md) §3.3 (limitations), [`implementation.md`](./implementation.md) §2 (rejected alternatives) |
 | 9 | Conclusion and Future Work | This file (§3) |
@@ -107,14 +107,14 @@ When writing or defending a chapter, these are the docs to consult:
 | "How is WASI-USB stronger than `--device=/dev/bus/usb`?" | [`architecture.md`](./architecture.md) §3.2 - comparison table |
 | "What broke and how was it fixed?" | [`implementation.md`](./implementation.md) §3 - three bug fixes with root causes |
 | "How do you measure WASI overhead?" | [`implementation.md`](./implementation.md) §5 - `instrument.rs`; [`benchmarking.md`](./benchmarking.md) - methodology |
-| "What does C1–C5 isolate?" | [`implementation.md`](./implementation.md) §8, [`benchmarking.md`](./benchmarking.md) |
+| "What does C1-C5 isolate?" | [`implementation.md`](./implementation.md) §8, [`benchmarking.md`](./benchmarking.md) |
 | "Why a libusb event thread + tokio oneshot?" | [`architecture.md`](./architecture.md) §5 - three concurrent domains |
 
 ---
 
 ## 5. Thesis chapter outline (full structure)
 
-The full chapter and section list of the thesis. Used as a writing checklist.
+Full chapter and section list, used as a writing checklist.
 
 ### Chapter 1 - Introduction
 - 1.1 Context (CPS, IoT, hardware access in containers)
@@ -187,7 +187,7 @@ The full chapter and section list of the thesis. Used as a writing checklist.
 - 10.1 Impact on Security and Privacy
 - 10.2 Ethical and Societal Considerations
 
-### Chapters 11–12 - References, Appendices
+### Chapters 11-12 - References, Appendices
 
 ---
 

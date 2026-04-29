@@ -25,8 +25,8 @@ Uitgebreide documentatie van de benchmark-suite voor de masterthesis
 
 ## 1. Benchmark-matrix
 
-De evaluatie vergelijkt USB-toegang in **vijf condities** over **vier workloads**,
-totaal 20 meetcellen.
+De benchmark vergelijkt USB-toegang in **vijf condities** over **vier workloads**,
+wat neerkomt op 20 meetcellen.
 
 ### Condities
 
@@ -38,11 +38,11 @@ totaal 20 meetcellen.
 | C4 | wasi-rusb      | Rust  | wasmtime + WIT | **rusb → libusb-wasi.a → WIT** (zelfde Rust-broncode als C3) |
 | C5 | wasi-raw-wit   | Rust  | wasmtime + WIT | Directe `component:usb::*`-aanroepen via wit-bindgen |
 
-**Centrale claims die de matrix bewijst:**
+**Wat de matrix laat zien:**
 - **C1 ↔ C2**: totale WASI-overhead voor C (runtime + WIT-grenslaag)
 - **C3 ↔ C4**: totale WASI-overhead voor Rust (idem)
-- **C4 ↔ C5**: pure rusb-wrapper-belasting bovenop directe WIT-aanroepen
-- **C1 ≈ C3** en **C2 ≈ C4**: taal is geen confounder; bottleneck zit in de WIT-grenslaag
+- **C4 ↔ C5**: hoeveel overhead rusb als wrapper toevoegt boven directe WIT-aanroepen
+- **C1 ≈ C3** en **C2 ≈ C4**: taal is geen confounder; de bottleneck zit in de WIT-grenslaag
 
 ### Workloads
 
@@ -57,8 +57,8 @@ totaal 20 meetcellen.
 
 ## 2. Hardwarevereisten
 
-Alle vier USB-apparaten zijn nodig voor een volledige meetronde.
-Afzonderlijke werkloads kunnen ook apart worden gedraaid.
+Voor een volledige meetronde zijn alle vier apparaten nodig.
+Individuele workloads kunnen ook gewoon apart gedraaid worden.
 
 | Apparaat | Aansluiting | Opmerkingen |
 |---|---|---|
@@ -187,17 +187,17 @@ cargo build --release --bins --target wasm32-wasip2 \
 
 ### 5.3 C4-specifieke setup (`libusb-wasi-rust.a`)
 
-**Eenmalige stap vóór de eerste C4-build.**
+**Dit is een eenmalige stap vóór de eerste C4-build.**
 
-`libusb-wasi.a` (Robbe Leroy's WIT-backed libusb) bevat `cguest.o` - een
-C-gegenereerd WIT-bindingsobject. Dat object werkt goed voor C-binaries (C2),
-maar is incompatibel met Rust's `wasm-component-ld` door een C-specifieke
-run-export handler. Zie [sectie 9](#9-technische-diepte-c4-implementatie) voor
-de volledige technische uitleg.
+`libusb-wasi.a` (Robbe Leroy's WIT-backed libusb) bevat `cguest.o`, een
+C-gegenereerd WIT-bindingsobject. Dat object werkt prima voor C-binaries (C2),
+maar botst met Rust's `wasm-component-ld` vanwege een C-specifieke
+run-export handler. De volledige technische uitleg staat in
+[sectie 9](#9-technische-diepte-c4-implementatie).
 
-De fix: maak `libusb-wasi-rust.a` - hetzelfde archief maar met `cguest.o`
-waarvan de run-export handler als interne (niet-geëxporteerde) functie is
-gemarkeerd, zodat `--gc-sections` hem verwijdert.
+De oplossing: een nieuw archief `libusb-wasi-rust.a` met dezelfde inhoud, maar
+met `cguest.o` aangepast zodat die run-export handler als interne functie
+gemarkeerd is en door `--gc-sections` weggegooid wordt.
 
 ```bash
 # Stap 1: Pak alle .o-bestanden uit het originele archief
@@ -584,4 +584,4 @@ Controleer de `notes`-kolom in de CSV op foutmeldingen.
 
 ---
 
-*Gegenereerd als onderdeel van de WASI-USB masterthesis, april 2026.*
+*WASI-USB masterthesis - Sibren Wieme, 2026.*
