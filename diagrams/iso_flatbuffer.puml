@@ -37,13 +37,8 @@ rectangle "**Guest** (e.g. webcam.rs)" as guest #DCEFFB {
 result --> guest : TransferResult
 
 note right of result #FFF6CC
-  **Why flat instead of ``list<list<u8>>``?**
-  The WASI component model does **not** support nested
-  growable lists across the guest/host boundary in stable
-  cabi.  A single flat ``list<u8>`` is one ABI copy; a list
-  of lists would mean N copies and pointer translation.
-  ``packets`` provides the slicing metadata so the guest
-  reconstructs per-packet views in **O(N)**, all in-Wasm.
+  list<list<u8>> is not supported in the stable component ABI —
+  flat buffer + packets metadata = one copy across the boundary.
 end note
 
 @enduml

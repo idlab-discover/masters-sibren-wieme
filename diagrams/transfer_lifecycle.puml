@@ -43,9 +43,8 @@ WIT -->  G : Ok
 == Wait (async) ==
 G  ->  WIT : await-transfer(**borrow**<transfer>)
 note over WIT, H #FFEBC8
-  Wasmtime allocates a **temporary borrow slot M ≠ K**.
-  Calling table.delete on M would corrupt unrelated WASI resources
-  (e.g. the stderr OutputStream).  See impl §"Bug-fixes".
+  borrow<transfer> → Wasmtime creates temporary slot M ≠ owned slot K
+  host must NOT call table.delete(M)
 end note
 WIT -> H   : await_transfer(self_=M)
 H  ->  RT  : take receiver from slot K
@@ -58,18 +57,13 @@ CB -> CB   : Box::from_raw(ctx)\nparse status / iso descriptors
 CB -> H    : ctx.sender.send(Ok(data))
 CB -> LU   : libusb_free_transfer(*ptr)
 note over CB
-  ctx drops here → buffer (Box<[u8]>) freed,
-  iso_packet_results Arc decremented.
+  ctx drops here → buffer freed, Arc decremented
 end note
 
 == Resume ==
 H  ->  RT  : read iso_packet_results from slot K
 H  -->  WIT: TransferResult { data, packets }
 WIT -->  G : TransferResult
-note over WIT, H #FFEBC8
-  Wasmtime drops borrow slot M automatically
-  (host **does NOT** call table.delete here).
-end note
 
 == Drop (end of guest scope) ==
 G  ->  WIT : drop transfer

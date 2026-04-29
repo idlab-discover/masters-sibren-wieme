@@ -45,11 +45,8 @@ a     -down-> wasm
 gct   -down-> wasm
 
 note bottom of wasm
-  **Verification**:
-  ``wasm-tools print w_bulk.wasm | grep "import .*component:usb"``
-  Should list device, transfers, descriptors, errors imports.
-  Confirms the rusb-call chain reaches the WIT host runtime
-  via libusb-wasi.a — without modifying rusb or libusb1-sys.
+  rusb and libusb1-sys are unmodified —
+  only the pkg-config sysroot redirects linking to libusb-wasi.a.
 end note
 
 @enduml

@@ -55,10 +55,8 @@ rectangle "**Guest (Wasm)**\n``component:usb/device.list-devices()``" as guest <
 rt --> guest : returns 2 devices
 
 note bottom of guest
-  Guest has **no syscalls** (no ``open("/dev/...")``, no ``ioctl``, no ``libusb_init``).
-  Only the WIT surface — bounded and auditable from the world declaration.
-  A compromised guest cannot enumerate devices outside its allow-list;
-  a denied / spoofed device is **invisible** to it.
+  No syscalls in the sandbox — no open(), no ioctl().
+  Denied devices are never returned by list-devices().
 end note
 
 @enduml
