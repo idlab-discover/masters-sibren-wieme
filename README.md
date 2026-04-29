@@ -49,8 +49,9 @@ wasi-usb/
 │       ├── xbox.rs         # Xbox controller reader
 │       └── identity.rs     # Trivial device lister
 ├── usb-wasi-cguest/        # Pre-built C bindings for benchmark components
+├── benchmarks/             # Benchmark suite: usb-bench-c/, usb-bench-rs/, usb-native/, scripts
 ├── Justfile                # Build + run recipes for all guests
-└── libusb/                 # libusb git submodule
+└── libusb-wasi/            # libusb-wasi git submodule (Robbe Leroy, WIT-backed)
 ```
 
 ## Quick start
@@ -89,7 +90,7 @@ just streams-test 0781 5581 0 0x02 0x81
 
 The repository includes a full 5-condition benchmark suite (C1–C5) covering native and WASI USB access in both C and Rust.
 
-See **[BENCHMARKING.md](./BENCHMARKING.md)** for:
+See **[docs/benchmarking.md](./docs/benchmarking.md)** for:
 - The complete benchmark matrix (conditions × workloads)
 - Build instructions for all conditions including C4 (rusb → WASM via WIT)
 - Run and analysis instructions
@@ -110,7 +111,20 @@ just bench-run     # full measurement round
 
 ## API walk-through
 
-See [`WASI-USB.md`](./WASI-USB.md) for the full API documentation.
+See [`docs/wasi-usb.md`](./docs/wasi-usb.md) for the full API documentation.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/compiling.md](docs/compiling.md) | Build & compilation guide (native + WASM) |
+| [docs/benchmarking.md](docs/benchmarking.md) | Benchmark suite (C1–C5) documentation |
+| [docs/webcam-wasi.md](docs/webcam-wasi.md) | Webcam architecture, limitations & UVC details |
+| [docs/wasi-usb.md](docs/wasi-usb.md) | WASI-USB host runtime overview |
+| [docs/thesis-overview.md](docs/thesis-overview.md) | Thesis context & research scope |
+| [docs/thesis-structure.md](docs/thesis-structure.md) | Chapter structure of the written thesis |
+| [docs/changelog.md](docs/changelog.md) | Implementation log (post F1–F7) |
+| [docs/plan-task7.md](docs/plan-task7.md) | Task 7 implementation plan (historical) |
 
 ## References & acknowledgements
 
