@@ -100,7 +100,7 @@ bench-build:
     cmake --build benchmarks/usb-bench-c/build-native
     # C2 — wasi-libusb (C WASM)
     cmake -B benchmarks/usb-bench-c/build-wasi benchmarks/usb-bench-c \
-        -DCMAKE_TOOLCHAIN_FILE=benchmarks/usb-bench-c/toolchain-wasi.cmake
+        -DCMAKE_TOOLCHAIN_FILE={{justfile_directory()}}/benchmarks/usb-bench-c/toolchain-wasi.cmake
     cmake --build benchmarks/usb-bench-c/build-wasi
     # C3 — native rusb (Rust)
     cargo build --release --bins --manifest-path benchmarks/usb-bench-rs/Cargo.toml
