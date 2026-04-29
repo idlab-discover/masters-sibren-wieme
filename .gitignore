@@ -42,6 +42,7 @@ benchmarks/usb-native/target/
 
 # ── Super-repo specific ───────────────────────────────────────────────────────
 .claude/
+CLAUDE.md
 nokhwa-test/
 pico_firmware/
 benchmarks/results/

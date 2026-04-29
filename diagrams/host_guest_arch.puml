@@ -1,0 +1,66 @@
+@startuml host_guest_arch
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 12
+skinparam ArrowColor #444
+skinparam ArrowThickness 1.2
+
+title WASI-USB — Host/Guest Architecture
+
+skinparam rectangle {
+  BackgroundColor<<guest>>   #DCEFFB
+  BorderColor<<guest>>       #2C7BB6
+  BackgroundColor<<wit>>     #FFEBC8
+  BorderColor<<wit>>         #C0823F
+  BackgroundColor<<host>>    #D5EAD8
+  BorderColor<<host>>        #4B8B5A
+  BackgroundColor<<os>>      #EDEDED
+  BorderColor<<os>>          #888
+  BackgroundColor<<hw>>      #FFF6CC
+  BorderColor<<hw>>          #B58A1F
+}
+
+rectangle "**Guest (WebAssembly Component)**\n//wasm32-wasip2 sandbox//" as guest <<guest>> {
+  rectangle "Application logic\n(webcam.rs, mass-storage, lsusb,\nbenchmark binaries, …)" as app <<guest>>
+  rectangle "Bindings\n• rusb-wasi  (Rust → libusb-wasi)\n• libusb-wasi.a  (C → WIT)\n• raw wit-bindgen  (Rust → WIT)" as bindings <<guest>>
+}
+
+rectangle "**WIT Interface**\n//component:usb@0.2.1//" as wit <<wit>> {
+  note as N1
+    device.wit       — list-devices, open, claim-interface, …
+    transfers.wit    — submit/await + iso extensions //(this work)//
+    descriptors.wit  — flattened device/config/endpoint records
+    hotplug.wit      — arrived/left flags
+  end note
+}
+
+rectangle "**Host Runtime (usb-wasi-host)**\n//Wasmtime + Rust//" as host <<host>> {
+  rectangle "WIT method dispatch\n//main.rs//\n• Resource ↔ ResourceTable\n• Capability filter (VID:PID allow-list)\n• Transfer callback orchestration\n• Tokio oneshot channels" as dispatch <<host>>
+  rectangle "**HostUsbBackend** trait\n//usb_backend.rs//\n• LibusbBackend  (libusb1-sys FFI)\n//(plug-in for rusb / mock)//" as backend <<host>>
+  rectangle "Instrumentation\n//instrument.rs//\n• Per-call duration\n• Linux ctx-switch deltas" as instr <<host>>
+}
+
+rectangle "**OS USB stack**\n//libusb 1.0 + kernel driver//" as os <<os>>
+rectangle "**USB device**\n//camera, gamepad, mass-storage, …//" as hw <<hw>>
+
+app          --> bindings : library calls
+bindings     --> wit       : WIT host calls\n//(component model boundary)//
+wit          --> dispatch  : wasmtime::component\n//bindgen!//
+dispatch     --> backend   : trait-method
+backend      --> os        : libusb1-sys FFI
+os           --> hw        : kernel ioctl / urb
+instr        ..> dispatch  : RAII trace guard
+dispatch     ..> instr     : CallTrace::enter()
+
+legend right
+  | **Color** | **Layer** |
+  |<#DCEFFB>| Guest (Wasm sandbox) |
+  |<#FFEBC8>| WIT interface (boundary) |
+  |<#D5EAD8>| Host runtime (Rust) |
+  |<#EDEDED>| OS USB stack |
+  |<#FFF6CC>| Hardware |
+endlegend
+
+@enduml

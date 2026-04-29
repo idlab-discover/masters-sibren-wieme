@@ -1,0 +1,64 @@
+@startuml capability_model
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 12
+skinparam ArrowColor #444
+
+title Capability model — VendorID:ProductID allow-list filtering
+
+skinparam rectangle {
+  BackgroundColor<<allowed>>  #D5EAD8
+  BorderColor<<allowed>>      #4B8B5A
+  BackgroundColor<<denied>>   #F5D5D5
+  BorderColor<<denied>>       #B04E4E
+  BackgroundColor<<host>>     #FFEBC8
+  BorderColor<<host>>         #C0823F
+  BackgroundColor<<guest>>    #DCEFFB
+  BorderColor<<guest>>        #2C7BB6
+}
+
+rectangle "**Host startup**\n``usb-wasi-host -c webcam.wasm``\n``  -d 046d:094c -d 054c:0ce6 --use-allow-list``" as cli <<host>>
+
+rectangle "**AllowedUSBDevices**\n//enum// Allowed | Denied\n``[ 046d:094c, 054c:0ce6 ]``" as allow <<host>>
+
+cli --> allow
+
+package "Connected USB bus" {
+  rectangle "Logitech Brio 100\n``046d:094c``" as dev1 <<allowed>>
+  rectangle "PS5 DualSense\n``054c:0ce6``" as dev2 <<allowed>>
+  rectangle "Random USB stick\n``0781:5581``" as dev3 <<denied>>
+  rectangle "BadUSB keyboard\n//(spoofed VID:PID)//\n``413d:2107``" as dev4 <<denied>>
+}
+
+rectangle "**LibusbBackend::list_devices()**\n//filters by is_allowed()//" as filter <<host>>
+
+allow --> filter
+dev1 --> filter
+dev2 --> filter
+dev3 --> filter
+dev4 --> filter
+
+rectangle "**ResourceTable**\nguest-visible devices only" as rt <<host>> {
+  rectangle "UsbDevice { 046d:094c }" as r1 <<allowed>>
+  rectangle "UsbDevice { 054c:0ce6 }" as r2 <<allowed>>
+}
+
+filter --> r1 : ✓ pushed
+filter --> r2 : ✓ pushed
+filter -[#B04E4E,dashed]-> dev3 : ✗ skipped
+filter -[#B04E4E,dashed]-> dev4 : ✗ skipped
+
+rectangle "**Guest (Wasm)**\n``component:usb/device.list-devices()``" as guest <<guest>>
+
+rt --> guest : returns 2 devices
+
+note bottom of guest
+  Guest has **no syscalls** (no ``open("/dev/...")``, no ``ioctl``, no ``libusb_init``).
+  Only the WIT surface — bounded and auditable from the world declaration.
+  A compromised guest cannot enumerate devices outside its allow-list;
+  a denied / spoofed device is **invisible** to it.
+end note
+
+@enduml

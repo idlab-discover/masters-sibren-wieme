@@ -1,0 +1,55 @@
+@startuml crosscompile_pipeline
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 11
+skinparam ArrowColor #444
+
+title C4 build pipeline — rusb → wasm32-wasip2 (no upstream forks)
+
+skinparam rectangle {
+  BackgroundColor<<input>>  #DCEFFB
+  BorderColor<<input>>      #2C7BB6
+  BackgroundColor<<config>> #FFEBC8
+  BorderColor<<config>>     #C0823F
+  BackgroundColor<<output>> #D5EAD8
+  BorderColor<<output>>     #4B8B5A
+  BackgroundColor<<external>> #EDEDED
+  BorderColor<<external>>   #888
+}
+
+rectangle "Rust workload source\n//w_bulk.rs, w_ctrl.rs, w_int.rs, w_iso.rs//\n``use rusb::*;``" as src <<input>>
+rectangle "rusb crate\n//upstream, unmodified//" as rusb <<external>>
+rectangle "libusb1-sys crate\n//upstream, unmodified//\n``build.rs → pkg_config::probe()``" as sys <<external>>
+rectangle "**sysroot-wasi/**\n``usr/lib/pkgconfig/libusb-1.0.pc``\n``-L${prefix}/../libusb-wasi``\n``-lusb-wasi-rust``" as sysroot <<config>>
+rectangle "**libusb-wasi.a**\n//Robbe Leroy, WIT-backed//" as a <<external>>
+rectangle "**guest_component_type.o**\n//component-type metadata//\n//(from C2 cmake build)//" as gct <<external>>
+
+src      -down-> rusb : depends
+rusb     -down-> sys  : FFI bindings
+sys      -right-> sysroot : pkg_config\n(env: PKG_CONFIG_LIBDIR\n+ ALLOW_CROSS=1)
+sysroot  -down-> a   : –lusb-wasi-rust resolves to
+
+rectangle "**benchmarks/build-c4.sh**\n``cargo build --release --bins``\n``  --target wasm32-wasip2``\n``  --features c4-rusb-wasi``\n``  --target-dir target-wasi-rusb``" as cargo <<config>>
+
+rectangle "**benchmarks/usb-bench-rs/build.rs**\n``println!(\"cargo:rustc-link-arg={}\", gct);``" as buildrs <<config>>
+
+cargo --> src : invokes
+buildrs --> gct : links
+
+rectangle "**w_*.wasm**\nWASI component\n//imports component:usb@0.2.1//" as wasm <<output>>
+
+cargo -down-> wasm
+a     -down-> wasm
+gct   -down-> wasm
+
+note bottom of wasm
+  **Verification**:
+  ``wasm-tools print w_bulk.wasm | grep "import .*component:usb"``
+  Should list device, transfers, descriptors, errors imports.
+  Confirms the rusb-call chain reaches the WIT host runtime
+  via libusb-wasi.a — without modifying rusb or libusb1-sys.
+end note
+
+@enduml

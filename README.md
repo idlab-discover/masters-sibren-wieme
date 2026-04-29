@@ -90,7 +90,8 @@ just streams-test 0781 5581 0 0x02 0x81
 
 The repository includes a full 5-condition benchmark suite (C1–C5) covering native and WASI USB access in both C and Rust.
 
-See **[docs/benchmarking.md](./docs/benchmarking.md)** for:
+See **[docs/benchmarking.md](./docs/benchmarking.md)** and
+**[docs/implementation.md](./docs/implementation.md) §8** for:
 - The complete benchmark matrix (conditions × workloads)
 - Build instructions for all conditions including C4 (rusb → WASM via WIT)
 - Run and analysis instructions
@@ -109,22 +110,21 @@ just bench-run     # full measurement round
 - No `await-iso-transfer` — isochronous packets are in `TransferResult.packets`.
 - `enable-hotplug` returns `result<_, libusb-error>` — no pollable.
 
-## API walk-through
-
-See [`docs/wasi-usb.md`](./docs/wasi-usb.md) for the full API documentation.
-
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs/compiling.md](docs/compiling.md) | Build & compilation guide (native + WASM) |
-| [docs/benchmarking.md](docs/benchmarking.md) | Benchmark suite (C1–C5) documentation |
-| [docs/webcam-wasi.md](docs/webcam-wasi.md) | Webcam architecture, limitations & UVC details |
-| [docs/wasi-usb.md](docs/wasi-usb.md) | WASI-USB host runtime overview |
-| [docs/thesis-overview.md](docs/thesis-overview.md) | Thesis context & research scope |
-| [docs/thesis-structure.md](docs/thesis-structure.md) | Chapter structure of the written thesis |
-| [docs/changelog.md](docs/changelog.md) | Implementation log (post F1–F7) |
-| [docs/plan-task7.md](docs/plan-task7.md) | Task 7 implementation plan (historical) |
+The five documents under [`docs/`](./docs/):
+
+| Document | What it covers |
+|----------|----------------|
+| **[docs/architecture.md](docs/architecture.md)** | System as a whole — host/guest layering, WIT design, capability model, async transfer pattern, threading model. Start here. |
+| **[docs/implementation.md](docs/implementation.md)** | Concrete contributions — backend abstraction, ISO extension, three bug fixes, rusb→WASM pipeline, UVC guest. Each design decision with rationale and rejected alternatives. |
+| **[docs/benchmarking.md](docs/benchmarking.md)** | C1–C5 benchmark matrix — methodology, workloads, conditions, hardware, run harness, analysis. |
+| **[docs/compiling.md](docs/compiling.md)** | Build instructions — host, guest examples, all five benchmark conditions, cross-compile sysroot. |
+| **[docs/thesis.md](docs/thesis.md)** | Thesis context, claimed contributions, full chapter outline, doc-to-chapter mapping. |
+
+Diagrams (PlantUML sources + rendered SVG) live in [`diagrams/`](./diagrams/):
+host/guest architecture, transfer lifecycle, capability model, ISO flat-buffer
+strategy, C4 cross-compile pipeline, webcam pipeline.
 
 ## References & acknowledgements
 

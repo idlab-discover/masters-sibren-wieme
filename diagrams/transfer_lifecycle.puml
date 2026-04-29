@@ -1,0 +1,85 @@
+@startuml transfer_lifecycle
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 12
+skinparam SequenceArrowThickness 1.2
+skinparam ParticipantBorderColor #444
+skinparam SequenceLifeLineBorderColor #888
+
+title WASI-USB transfer lifecycle\n//async submit/await with libusb event thread + Tokio oneshot//
+
+participant "Guest\n(Wasm)"     as G
+participant "WIT boundary\n(wasmtime bindgen)" as WIT
+participant "main.rs\n(host)"   as H
+participant "ResourceTable"     as RT
+participant "libusb"            as LU
+participant "libusb event\nthread"   as ET
+participant "transfer_callback\n(C ABI)" as CB
+
+== Allocate ==
+G  ->  WIT : new-transfer(type, setup, buf_size, opts)
+WIT -> H   : new_transfer(...)
+H  ->  LU  : libusb_alloc_transfer(iso_pkts)
+LU -->  H  : ``*libusb_transfer``
+H  ->  RT  : push UsbTransfer { ptr, completed, buffer, … }
+RT -->  H  : Resource<UsbTransfer> (slot **K**, **owned**)
+H  -->  WIT: Resource handle
+WIT -->  G : transfer
+
+== Submit ==
+G  ->  WIT : transfer.submit-transfer(data)
+WIT -> H   : submit_transfer(self_, data)
+note right of H
+  Build TransferContext{ sender, completed, buffer, iso_results }
+  (oneshot::channel created here)
+end note
+H  ->  LU  : libusb_submit_transfer(*ptr)\nuser_data = Box::into_raw(ctx)
+LU --> ET  : queued
+H  ->  RT  : store //receiver// in slot K
+H  -->  WIT: Ok
+WIT -->  G : Ok
+
+== Wait (async) ==
+G  ->  WIT : await-transfer(**borrow**<transfer>)
+note over WIT, H #FFEBC8
+  Wasmtime allocates a **temporary borrow slot M ≠ K**.
+  Calling table.delete on M would corrupt unrelated WASI resources
+  (e.g. the stderr OutputStream).  See impl §"Bug-fixes".
+end note
+WIT -> H   : await_transfer(self_=M)
+H  ->  RT  : take receiver from slot K
+H  --> H   : .await
+... //transfer in flight on USB bus// ...
+
+== Completion (libusb thread) ==
+ET -> CB   : transfer_callback(*libusb_transfer)
+CB -> CB   : Box::from_raw(ctx)\nparse status / iso descriptors
+CB -> H    : ctx.sender.send(Ok(data))
+CB -> LU   : libusb_free_transfer(*ptr)
+note over CB
+  ctx drops here → buffer (Box<[u8]>) freed,
+  iso_packet_results Arc decremented.
+end note
+
+== Resume ==
+H  ->  RT  : read iso_packet_results from slot K
+H  -->  WIT: TransferResult { data, packets }
+WIT -->  G : TransferResult
+note over WIT, H #FFEBC8
+  Wasmtime drops borrow slot M automatically
+  (host **does NOT** call table.delete here).
+end note
+
+== Drop (end of guest scope) ==
+G  ->  WIT : drop transfer
+WIT -> H   : HostTransfer::drop(self_=K)
+H  ->  RT  : table.delete(K) → owned UsbTransfer
+note right of H
+  Three cases handled:
+  (a) completed=true   → callback already freed; no-op
+  (b) receiver=Some    → in flight; libusb_cancel_transfer (callback frees)
+  (c) receiver=None    → never submitted; libusb_free_transfer ourselves
+end note
+
+@enduml

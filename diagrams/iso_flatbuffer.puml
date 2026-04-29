@@ -1,0 +1,49 @@
+@startuml iso_flatbuffer
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 11
+skinparam ArrowColor #444
+
+title Isochronous transfer — flat-buffer strategy\n//WIT extension contributed by this work//
+
+rectangle "**libusb_transfer**\n``num_iso_packets = 32``\n``length = 32 × 1024 = 32 768``" as xfer #FFEBC8 {
+  rectangle "iso_packet_desc[]\n[0] length=1024 actual=...\n[1] length=1024 actual=...\n…\n[31] length=1024 actual=..." as descs #EDEDED
+  rectangle "buffer (flat)\n``[ pkt0 stride | pkt1 stride | … | pkt31 stride ]``\n//each stride = packet_size, regardless of actual_length//" as buf #FFF6CC
+}
+
+rectangle "**transfer_callback** (host C-ABI)" as cb #D5EAD8 {
+  rectangle "Walk iso_packet_desc[]:\n``packet_results: Vec<(actual_len, status)>``" as walk
+  rectangle "Copy full ``length`` bytes\nfrom flat ``buffer`` → Vec<u8>" as copy
+  rectangle "Send via tokio::oneshot:\n``Ok(Vec<u8>)``\nStore packet_results in\n``Arc<Mutex<...>>``" as send
+  walk -down-> copy
+  copy -down-> send
+}
+
+xfer --> cb : libusb fires\nafter num_iso_packets\nare scheduled
+
+rectangle "**TransferResult** (WIT record)" as result #DCEFFB {
+  rectangle "data: list<u8>\n//flat: pkt0|pkt1|…|pkt31 strides//" as rdata
+  rectangle "packets: list<iso-packet>\n[ {actual_length, status}, … ]" as rpkts
+}
+
+cb --> result : await_transfer\nreturns
+
+rectangle "**Guest** (e.g. webcam.rs)" as guest #DCEFFB {
+  rectangle "for i in 0..packets.len():\n  start = i * stride\n  end   = start + packets[i].actual_length\n  payload = &data[start..end]\n  parse UVC header / append frame" as parse
+}
+
+result --> guest : TransferResult
+
+note right of result #FFF6CC
+  **Why flat instead of ``list<list<u8>>``?**
+  The WASI component model does **not** support nested
+  growable lists across the guest/host boundary in stable
+  cabi.  A single flat ``list<u8>`` is one ABI copy; a list
+  of lists would mean N copies and pointer translation.
+  ``packets`` provides the slicing metadata so the guest
+  reconstructs per-packet views in **O(N)**, all in-Wasm.
+end note
+
+@enduml
