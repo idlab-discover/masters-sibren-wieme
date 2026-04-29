@@ -1,0 +1,79 @@
+@startuml webcam_architecture
+skinparam defaultFontName "Liberation Sans"
+skinparam defaultFontSize 13
+skinparam ArrowColor #444444
+skinparam shadowing false
+skinparam RoundCorner 8
+
+skinparam component {
+    BackgroundColor<<guest>>   #DDEEFF
+    BorderColor<<guest>>       #2255AA
+    FontColor<<guest>>         #1A3D6E
+    BackgroundColor<<host>>    #DFFFDF
+    BorderColor<<host>>        #2A7A2A
+    FontColor<<host>>          #1B4A1B
+    BackgroundColor<<hw>>      #FFF3CC
+    BorderColor<<hw>>          #B8860B
+    FontColor<<hw>>            #5C4000
+    BackgroundColor<<wit>>     #FFE8D6
+    BorderColor<<wit>>         #CC5500
+    FontColor<<wit>>           #7A2800
+}
+
+skinparam rectangle {
+    BackgroundColor<<sandbox>>  #EEF5FF
+    BorderColor<<sandbox>>      #2255AA
+    BorderThickness<<sandbox>>  2
+    BackgroundColor<<runtime>>  #EFFFEF
+    BorderColor<<runtime>>      #2A7A2A
+    BorderThickness<<runtime>>  2
+}
+
+title <size:16><b>WASI-USB Webcam — Architectuuroverzicht</b></size>
+
+' ─── WASM Sandbox ────────────────────────────────────────────────────────────
+rectangle " WASM Sandbox  (webcam.wasm)" <<sandbox>> as SANDBOX {
+
+    component "run_webcam()\n<size:10>main capture loop\nstd::fs::write(\"out/latest.jpg\")</size>" <<guest>> as RW
+    component "WebcamFrameStream\n<size:10>UVC negotiation\nFID reassembly\nMJPEG validation</size>" <<guest>> as WFS
+    component "WASI Filesystem\n<size:10>wasi:filesystem/types</size>" <<guest>> as WASIFSGUEST
+
+    RW -down-> WFS : capture_uvc_frame()
+    RW -right-> WASIFSGUEST : write JPEG
+}
+
+' ─── WIT interface boundary ───────────────────────────────────────────────────
+component "<b>WIT Interface</b>\ncomponent:usb@0.2.1\n<size:10>device · transfers · transfers</size>" <<wit>> as WIT
+
+SANDBOX -right-> WIT : WIT imports\n<size:10>new_transfer / submit_transfer\nawait_transfer / claim_interface</size>
+
+' ─── Host Runtime ─────────────────────────────────────────────────────────────
+rectangle "  Host Runtime  (usb-wasi-host)" <<runtime>> as RUNTIME {
+
+    component "HostDeviceHandle\n<size:10>new_transfer\nclaim_interface\nset_altsetting</size>" <<host>> as HDH
+    component "HostTransfer\n<size:10>submit_transfer\nawait_transfer\n(oneshot channel)</size>" <<host>> as HT
+    component "LibusbBackend\n<size:10>list_devices / open\nlibusb event thread</size>" <<host>> as LB
+    component "WASI Runtime\n<size:10>wasmtime_wasi\nstdio · filesystem</size>" <<host>> as WASIHOST
+
+    HDH -down-> LB
+    HT -down-> LB
+}
+
+WIT -right-> RUNTIME : WIT exports\n<size:10>host implementations</size>
+
+' ─── Hardware ─────────────────────────────────────────────────────────────────
+component "USB Device\n<size:10>Logitech Brio 4K\n046d:086c</size>" <<hw>> as USB
+
+LB -right-> USB : libusb1-sys\n<size:10>ISO IN / Control</size>
+
+' ─── WASI filesystem path ─────────────────────────────────────────────────────
+WASIFSGUEST .right.> WASIHOST : preopened dir "."
+WASIHOST -[hidden]right-> USB
+
+note bottom of WIT
+  <b>Capability enforcement</b>
+  AllowedUSBDevices filters VID:PID
+  before populating ResourceTable
+end note
+
+@enduml

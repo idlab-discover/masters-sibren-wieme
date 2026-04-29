@@ -1,12 +1,15 @@
+[submodule "libusb"]
+	path = libusb
+	url = https://github.com/idlab-discover/libusb-wasi
+
 [submodule "libusb-vanilla"]
 	path = libusb-vanilla
 	url = https://github.com/libusb/libusb.git
+
 [submodule "libusb-wasi"]
 	path = libusb-wasi
-	url = git@github.com:idlab-discover/libusb-wasi.git
+	url = https://github.com/idlab-discover/libusb-wasi.git
+
 [submodule "rusb-wasi"]
 	path = rusb-wasi
-	url = git@github.com:siwieme/rusb-wasi.git
-[submodule "wasi-usb"]
-	path = wasi-usb
-	url = git@github.com:idlab-discover/wasi-usb.git
+	url = https://github.com/siwieme/rusb-wasi.git

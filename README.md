@@ -1,129 +1,122 @@
-# Secure USB Access in WebAssembly: A Capability-Based Framework for Cyber-Physical IoT
-### Veilige USB-toegang in WebAssembly: een capability-gebaseerd raamwerk voor cyber-fysieke IoT-toepassingen
+# WASI USB
 
-This repository contains the source code, submodules, and documentation for a Master's Thesis focused on bringing safe, portable, and capability-based USB hardware access to WebAssembly (Wasm) via the **WASI-USB** interface.
+A proposed [WebAssembly System Interface](https://github.com/WebAssembly/WASI) API for USB hardware access.
 
-Original research and implementation are the work of the **contributors**!
+### Current Phase
 
-## Project Overview
+WASI USB is currently in Phase 2.
 
-The core objective of this project is to bridge the gap between high-level, sandboxed WebAssembly execution and low-level hardware interaction. By leveraging the WebAssembly Component Model and WASI Preview 2/3, we provide a unified API that works across different operating systems (Linux, macOS) and hardware architectures.
+### Contributors & Champions
 
-### Key Components
+- **Merlijn Sebrechts** (Champion)
+- **Michiel Van Kenhove**
+- **Friedrich Vandenberghe**
+- **Sibren Wieme** (IDLab Discover - host implementation, benchmarking)
 
-- **[wasi-usb](./wasi-usb/)**: The canonical host runtime and single source of WIT truth. Implements the `component:usb@0.2.1` interface and translates Wasm guest calls into native USB operations. All guest components (webcam, lsusb, mass-storage, …) live under `wasi-usb/usb-wasi-guest/examples/`.
-- **[libusb-wasi](./libusb-wasi/)**: A modified version of the standard `libusb` C library, featuring a custom WASI backend to route I/O through the WASI-USB interface.
-- **[rusb-wasi](./rusb-wasi/)**: A Rust wrapper for `libusb-wasi`, enabling Rust applications to be compiled to `wasm32-wasip2` with secure USB access.
-- **[benchmarks](./benchmarks/)**: A comprehensive benchmarking suite for measuring latency and throughput overhead compared to native execution.
-
-## Architecture
-
-The diagram below illustrates the relationship between the Wasm guest application, the host runtime, and the physical hardware.
-
-```mermaid
-graph TD
-    App[Wasm Guest Component]
-    App -->|Rust wit-bindgen| USB[component:usb@0.2.1 WIT]
-    App -->|C libusb-wasi| USB
-    USB -->|WASI-USB Interface| Host[usb-wasi-host]
-    Host -->|libusb/OS APIs| HW[Physical USB Device]
-
-    subgraph "Wasm Sandbox"
-    App
-    end
-
-    subgraph "Host Runtime (wasi-usb)"
-    USB
-    Host
-    end
-```
-
-**Dumb-host / smart-guest**: the host exposes only generic USB primitives (open/claim/transfer). All protocol-specific logic (UVC, MJPEG, FAT32, HID parsing) lives in the guest component.
-
-## Hardware & Software Support
+### Portability Criteria
 
 | Platform | Architecture | Reference Hardware |
 |----------|--------------|--------------------|
-| macOS    | aarch64      | Apple Silicon (M-series) |
-| Linux    | x86_64       | Generic Workstation |
-| Linux    | aarch64      | Raspberry Pi 4/5   |
+| Linux    | amd64        |                    |
+| Linux    | aarch64      | Raspberry Pi 4      |
+| macOS    | aarch64      | MacBook Pro M3 MAX |
 
-## Getting Started
+## Repository layout
 
-### 1. Clone the repository
-```bash
-git clone --recursive https://github.com/idlab-discover/masters-sibren-wieme.git
-cd masters-sibren-wieme
+```
+wasi-usb/
+├── wit/                    # WIT source of truth — component:usb@0.2.1
+│   ├── device.wit          # USB device management + hotplug
+│   ├── transfers.wit       # Transfer types, options, results
+│   ├── descriptors.wit     # Device/configuration/interface/endpoint descriptors
+│   ├── configuration.wit   # Configuration values
+│   ├── errors.wit          # libusb error codes
+│   ├── hotplug.wit         # Hotplug events
+│   └── world.wit           # host / guest / cguest / webcam-guest worlds
+├── usb-wasi-host/          # wasmtime-based host binary
+├── usb-wasi-guest/         # Rust guest library + examples
+│   └── examples/           # All demo components
+│       ├── webcam/         # UVC webcam capture (sub-crate)
+│       ├── mass-storage/   # FAT32 mass storage (sub-crate)
+│       ├── ps5-maze/       # Pacman maze — PS5/Xbox (sub-crate)
+│       ├── xbox-maze/      # Pacman maze — Xbox (sub-crate)
+│       ├── enumerate-devices-go/  # Go/tinygo device lister (sub-dir)
+│       ├── lsusb.rs        # Detailed USB device listing
+│       ├── enumerate-devices-rust.rs
+│       ├── control.rs      # Control transfer example
+│       ├── ping.rs         # Bulk OUT/IN echo
+│       ├── streams-test.rs # USB 3.0 bulk streams validation
+│       ├── xbox.rs         # Xbox controller reader
+│       └── identity.rs     # Trivial device lister
+├── usb-wasi-cguest/        # Pre-built C bindings for benchmark components
+├── Justfile                # Build + run recipes for all guests
+└── libusb/                 # libusb git submodule
 ```
 
-### 2. Build the host
-```bash
-cd wasi-usb
-just build-host   # cargo build --release -p usb-wasi-host
-```
-
-## Running the Demos
-
-### 1. UVC Webcam Capture
-A real-time UVC frame-capture demonstration. The webcam guest handles UVC probe/commit negotiation and MJPEG reassembly; the host only provides generic USB primitives.
+## Quick start
 
 ```bash
-cd wasi-usb
+# Build the host
+just build-host
+
+# Webcam demo (Logitech Brio 100 or any UVC webcam, sudo required)
 mkdir -p out
-just webcam   # builds webcam component + runs with sudo
-# Captured frames are written to wasi-usb/out/latest.jpg
-# Open out/latest.jpg in Preview/feh and press ENTER to refresh
+just webcam
+# Frames are written to out/latest.jpg; open in Preview and press ENTER to refresh
+
+# List USB devices
+just lsusb
+
+# USB 3.0 bulk streams validation
+just streams-test 0781 5581 0 0x02 0x81
 ```
 
-### 2. USB Device Listing
+## Examples
+
+| Command | Description |
+|---------|-------------|
+| `just webcam` | UVC capture → `out/latest.jpg` |
+| `just lsusb` | Detailed device listing |
+| `just enumerate-devices-rust` | Compact device list |
+| `just control` | Control transfer to Arduino |
+| `just xbox` | Xbox One S controller reader |
+| `just streams-test <vid> <pid> <iface> <ep_out> <ep_in>` | Bulk streams test |
+| `just mass-storage tree` | FAT32 directory tree |
+| `just ps5-maze` | Pacman controlled by PS5/Xbox |
+| `just build-all` | Build everything |
+
+## Benchmarking
+
+The repository includes a full 5-condition benchmark suite (C1–C5) covering native and WASI USB access in both C and Rust.
+
+See **[BENCHMARKING.md](./BENCHMARKING.md)** for:
+- The complete benchmark matrix (conditions × workloads)
+- Build instructions for all conditions including C4 (rusb → WASM via WIT)
+- Run and analysis instructions
+- Technical details of the C4 implementation
 
 ```bash
-cd wasi-usb && just lsusb
-# or enumerate-devices-rust for a compact list
-just enumerate-devices-rust
+just bench-build   # build all 5 conditions
+just bench-smoke   # quick sanity run (1 iteration per cell)
+just bench-run     # full measurement round
 ```
 
-### 3. DualSense (PS5) / Xbox Pacman Maze
+## WIT design notes
 
-```bash
-cd wasi-usb && just ps5-maze   # PS5 DualSense or Xbox controller
-cd wasi-usb && just xbox-maze  # Xbox controller
-```
+- `flags event { arrived; left; }` — bitflags, not an enum. Check `Event::ARRIVED` / `Event::LEFT`.
+- `await-transfer(borrow<transfer>) -> result<transfer-result, libusb-error>` — borrow semantics; returns `TransferResult { data, packets }`.
+- No `await-iso-transfer` — isochronous packets are in `TransferResult.packets`.
+- `enable-hotplug` returns `result<_, libusb-error>` — no pollable.
 
-### 4. Mass Storage (FAT32)
+## API walk-through
 
-```bash
-cd wasi-usb && just mass-storage tree
-cd wasi-usb && just mass-storage ls /
-```
+See [`WASI-USB.md`](./WASI-USB.md) for the full API documentation.
 
-## Benchmarking Suite
+## References & acknowledgements
 
-```bash
-cd benchmarks
-./build_all.sh
-sudo ./run_benchmarks.sh --all
-# or individual modes: --latency | --throughput | --init | --streams
-python3 plot.py
-```
+Many thanks for valuable feedback, work and advice from:
+- Warre Dujardin
+- Wouter Hennen
+- Robbe Leroy
 
-See [benchmarks/README.md](./benchmarks/README.md) for detailed analysis.
-
-> [!TIP]
-> If `just` is not in your `PATH`, install it via `brew install just` (macOS) or `cargo install just`.
-
-## Contributors
-
-This research and implementation is the result of master theses from:
-- **Wouter Hennen**
-- **Warre Dujardin**
-- **Robbe Leroy**
-- **Sibren Wieme**
-
-## Licensing
-
-This project is dual-licensed:
-- **Infrastructure**: Components derived from the WASI community are subject to their original licenses (Apache 2.0 or LGPL).
-- **Original Research**: All original work (USB host implementation, webcam guest, and benchmarks) is licensed under the **MIT License**.
-
-Copyright (c) 2026 the contributors. All rights reserved.
+This work has been partially supported by the ELASTIC project, which received funding from the Smart Networks and Services Joint Undertaking (SNS JU) under the European Union's Horizon Europe research and innovation programme under Grant Agreement No 101139067.

@@ -1,0 +1,59 @@
+@startuml webcam_arch_minimal
+skinparam defaultFontName "Liberation Sans"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam ArrowColor #555555
+skinparam ArrowThickness 1.6
+skinparam RoundCorner 10
+skinparam nodesep 40
+skinparam ranksep 30
+
+skinparam rectangle {
+    BackgroundColor<<sandbox>> #E8F0FE
+    BorderColor<<sandbox>>     #3D6FCC
+    BorderThickness<<sandbox>> 2.5
+    FontColor<<sandbox>>       #3D6FCC
+    FontStyle<<sandbox>>       bold
+
+    BackgroundColor<<runtime>> #E6F4EA
+    BorderColor<<runtime>>     #2E7D32
+    BorderThickness<<runtime>> 2.5
+    FontColor<<runtime>>       #2E7D32
+    FontStyle<<runtime>>       bold
+}
+
+skinparam component {
+    BackgroundColor<<g>>  #C5D8F6
+    BorderColor<<g>>      #3D6FCC
+    FontColor<<g>>        #1A3560
+
+    BackgroundColor<<h>>  #C8E6C9
+    BorderColor<<h>>      #2E7D32
+    FontColor<<h>>        #1B4A1B
+
+    BackgroundColor<<wit>> #FFE0B2
+    BorderColor<<wit>>     #E65100
+    FontColor<<wit>>       #7A2800
+
+    BackgroundColor<<hw>>  #FFF9C4
+    BorderColor<<hw>>      #F9A825
+    FontColor<<hw>>        #5C4000
+}
+
+rectangle "  WASM Sandbox  " <<sandbox>> as SB {
+    component "webcam.wasm\n<size:11>UVC · FID · MJPEG</size>" <<g>> as GUEST
+}
+
+component "WIT\n<size:11>component:usb@0.2.1</size>" <<wit>> as WIT
+
+rectangle "  Host Runtime  " <<runtime>> as RT {
+    component "usb-wasi-host\n<size:11>Wasmtime + libusb</size>" <<h>> as HOST
+}
+
+component "USB Camera\n<size:11>046d:086c</size>" <<hw>> as CAM
+
+GUEST -right-> WIT : <size:11>WIT imports</size>
+WIT   -right-> HOST : <size:11>host impl</size>
+HOST  -right-> CAM  : <size:11>libusb1-sys</size>
+
+@enduml

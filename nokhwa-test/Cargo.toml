@@ -1,8 +1,0 @@
-[package]
-name = "nokhwa-test"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-nokhwa = { version = "0.10", features = ["input-native"] }
-image = { version = "0.25", features = ["png", "jpeg"] }

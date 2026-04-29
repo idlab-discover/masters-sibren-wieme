@@ -1,0 +1,13 @@
+# Host Specific Build Artifacts
+build_release/
+frame.png
+frame_raw.jpg
+yolov8n.onnx
+
+# ── Debug Logs & Artifacts ───────────────────────────────────────────────────
+*.log
+*.csv
+*.out
+perf.data*
+flamegraph.svg
+build_errors*.txt
