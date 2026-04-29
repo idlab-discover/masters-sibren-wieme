@@ -464,8 +464,13 @@ impl HostTransfer for MyState {
 
     fn drop(&mut self, self_: Resource<UsbTransfer>) -> Result<(), Error> {
         trace!("Drop transfer");
-        // `await_transfer` already calls `table.delete` on successful completion,
-        // so this delete only succeeds for transfers that were never awaited.
+        // This is the sole place where the owned UsbTransfer resource is removed
+        // from the host ResourceTable.  Three cases:
+        //   (a) transfer was awaited: completed=true, receiver=None, libusb_transfer
+        //       already freed by the callback → nothing extra to do.
+        //   (b) transfer was submitted but not yet awaited: cancel it; the callback
+        //       will call libusb_free_transfer when it fires.
+        //   (c) transfer was allocated but never submitted: free it ourselves.
         if let Ok(transfer) = self.table.delete(self_) {
             unsafe {
                 if transfer.completed.load(Ordering::SeqCst) {
@@ -540,7 +545,16 @@ impl crate::component::usb::transfers::Host for MyState {
             })
             .collect();
 
-        self.table.delete(self_).ok();
+        // Do NOT call self.table.delete(self_) here.
+        // `await-transfer` in the WIT is declared as `borrow<transfer>`, so
+        // Wasmtime passes the host a *borrow* entry (a temporary ResourceTable
+        // slot M that is distinct from the owned slot K created by new_transfer).
+        // Calling table.delete on M would:
+        //   1. free slot M, which may coincide with an unrelated WASI resource
+        //      (e.g. the stderr OutputStream), corrupting the table, and
+        //   2. conflict with Wasmtime's own borrow-cleanup after the host call returns.
+        // The owned UsbTransfer at slot K is cleaned up by HostTransfer::drop when
+        // the guest drops the `transfer` handle at end-of-scope.
         Ok(TransferResult { data, packets })
     }
 }
