@@ -12,24 +12,24 @@ documentation. The thesis itself lives in `Masterproef_Sibren_Overleaf/` (gitign
 
 ## WASI-USB context
 
-WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAssembly/WASI) API for USB hardware access, currently in **Phase 2**. This thesis is the fourth in a series at IDLab Discover:
+WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAssembly/WASI) API for USB hardware access, currently in **Phase 2**. This thesis is the third in a series at IDLab Discover:
 
 | # | Author | Year | Contribution |
 |---|--------|------|--------------|
-| 1 | Wouter Hennen | 2024 | Initial WIT-based host runtime; control + bulk transfers |
-| 2 | Friedrich Vandenberghe | 2024 | WASI-I²C |
-| 3 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
-| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
+| 1 | Wouter Hennen + Warre Dujarding | 2024 | Initial WIT-based host runtime; control + bulk transfers |
+| 2 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
+| **3** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
 
 **Champions / contributors:** Merlijn Sebrechts (champion), Michiel Van Kenhove, Friedrich Vandenberghe, Sibren Wieme
 
 ### Portability targets
 
-| Platform | Architecture | Reference hardware |
-|----------|--------------|--------------------|
-| Linux    | amd64        |                    |
-| Linux    | aarch64      | Raspberry Pi 4     |
-| macOS    | aarch64      | MacBook Pro M3 MAX |
+| Platform | Architecture | Reference hardware | Notes |
+|----------|--------------|--------------------|-------|
+| Linux    | amd64        |                    |       |
+| Linux    | aarch64      | Raspberry Pi 4     |       |
+| macOS    | aarch64      | MacBook Pro M3 MAX |       |
+| *Windows*  | *amd64*        | *HP Omen 5*        | *Not tested yet* |
 
 ---
 
@@ -46,6 +46,12 @@ WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAsse
 │   ├── hotplug.wit         # Hotplug events
 │   └── world.wit           # host / guest / cguest / webcam-guest worlds
 ├── usb-wasi-host/          # wasmtime-based host binary (Rust)
+│   ├── src/
+│   │   ├── main.rs         # WIT method implementations, CLI, transfer callback, Wasmtime setup
+│   │   ├── usb_backend.rs  # HostUsbBackend trait + LibusbBackend implementation
+│   │   ├── host.rs         # Generated WIT bindings (do not edit)
+│   │   └── instrument.rs   # RAII CallTrace guard — per-call duration + ctx-switch tracing
+│   └── Cargo.toml
 ├── usb-wasi-guest/         # Rust guest library + examples
 │   └── examples/
 │       ├── webcam/         # UVC webcam capture (sub-crate)
