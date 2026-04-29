@@ -12,7 +12,7 @@
 # .a-archive verschilt (WASI-backend i.p.v. OS-native backend).
 
 prefix=${pcfiledir}/../../..
-libusb_root=${prefix}/../libusb
+libusb_root=${prefix}/../libusb-wasi
 
 Name: libusb-1.0
 Description: libusb-1.0 cross-compiled for WASI (WIT-backed by Robbe Leroy)

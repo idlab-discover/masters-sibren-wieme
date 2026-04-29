@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Repository root (parent of this directory)
 # ---------------------------------------------------------------------------
 get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/.." ABSOLUTE)
-set(LIBUSB_DIR "${REPO_ROOT}/libusb")
+set(LIBUSB_DIR "${REPO_ROOT}/libusb-wasi")
 
 # ---------------------------------------------------------------------------
 # Helper macro: configure one benchmark executable for the current target
@@ -39,7 +39,7 @@ macro(bench_target _name)
         target_compile_definitions(${_name} PRIVATE BENCH_CONDITION="native-libusb")
     endif()
 
-    install(TARGETS ${_name} DESTINATION "${REPO_ROOT}/bench/bin")
+    install(TARGETS ${_name} DESTINATION "${REPO_ROOT}/benchmarks/bin")
 endmacro()
 
 # ---------------------------------------------------------------------------

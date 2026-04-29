@@ -20,9 +20,9 @@ SYSROOT="${ROOT}/sysroot-wasi"
 BENCH_RS="${ROOT}/usb-bench-rs"
 
 # Sanity-check: libusb-wasi.a aanwezig?
-if [[ ! -f "${ROOT}/libusb/libusb-wasi.a" ]]; then
-    echo "ERROR: ${ROOT}/libusb/libusb-wasi.a niet gevonden." >&2
-    echo "       Bouw Robbe's libusb-wasi eerst (zie libusb/BUILDING_WASI.md)." >&2
+if [[ ! -f "${ROOT}/libusb-wasi/libusb-wasi.a" ]]; then
+    echo "ERROR: ${ROOT}/libusb-wasi/libusb-wasi.a niet gevonden." >&2
+    echo "       Bouw Robbe's libusb-wasi eerst (zie libusb-wasi/BUILDING_WASI.md)." >&2
     exit 1
 fi
 
