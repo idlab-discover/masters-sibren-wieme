@@ -50,7 +50,7 @@
 
 #define DEFAULT_OUTPUT     "bench_w_iso.csv"
 #define DEFAULT_VID        0x046du   /* Logitech */
-#define DEFAULT_PID        0x086cu   /* Brio 4K  */
+#define DEFAULT_PID        0x094cu   /* Brio 100 (pass 046d:086c for Brio 4K) */
 #define DEFAULT_ITERATIONS 200u
 #define DEFAULT_IFACE      1u
 #define DEFAULT_ALT        1u
@@ -99,7 +99,7 @@ static int parse_uint_arg(const char *s)
 int main(int argc, char **argv)
 {
     const char *output     = (argc > 1) ? argv[1] : DEFAULT_OUTPUT;
-    const char *vid_pid    = (argc > 2) ? argv[2] : "046d:086c";
+    const char *vid_pid    = (argc > 2) ? argv[2] : "046d:094c";
     uint32_t    iterations = (argc > 3) ? (uint32_t)atoi(argv[3]) : DEFAULT_ITERATIONS;
     const char *condition  = BENCH_CONDITION;
 

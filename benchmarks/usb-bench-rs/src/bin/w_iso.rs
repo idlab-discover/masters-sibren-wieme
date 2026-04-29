@@ -14,7 +14,7 @@
 //! | native host         | C3        | `native-rusb`         |
 //! | wasm32-wasip2       | C5        | `wasi-raw-wit`        |
 //!
-//! Default device: Logitech Brio `046d:086c` (VS interface 1, alt 1,
+//! Default device: Logitech Brio 100 `046d:094c` (VS interface 1, alt 1,
 //! endpoint 0x81, packet stride 1024 B, 32 packets per transfer ≈ 32 KiB).
 //!
 //! # Usage
@@ -434,7 +434,7 @@ impl Config {
             .map(String::as_str)
             .unwrap_or("bench_w_iso.csv")
             .to_owned();
-        let vid_pid = args.get(2).map(String::as_str).unwrap_or("046d:086c");
+        let vid_pid = args.get(2).map(String::as_str).unwrap_or("046d:094c");
         let iterations: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(200);
 
         let condition = named_arg(&args, "--condition")

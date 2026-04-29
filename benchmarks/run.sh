@@ -331,6 +331,14 @@ main() {
             fi
         fi
 
+        # On macOS, the OS UVC camera driver (AVFoundation / IOUSBLib) will
+        # hold the camera interface if any app has it open (Photo Booth, Zoom,
+        # FaceTime, Teams, …).  libusb_claim_interface will then return
+        # LIBUSB_ERROR_ACCESS / LIBUSB_ERROR_BUSY.  Close all camera apps first.
+        if [[ "${wl}" == "iso" && "$(uname -s)" == "Darwin" && $DRY_RUN -eq 0 ]]; then
+            echo "  [prep] macOS iso: ensure no app (Photo Booth, Zoom, …) is using the webcam"
+        fi
+
         for cond in "${COND_LIST[@]}"; do
             cond="${cond// /}"
             cell=$(( cell + 1 ))

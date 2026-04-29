@@ -26,14 +26,6 @@ if [[ ! -f "${ROOT}/libusb-wasi/libusb-wasi.a" ]]; then
     exit 1
 fi
 
-# Sanity-check: guest_component_type.o aanwezig?
-GUEST_OBJ="${ROOT}/benchmarks/usb-bench-c/bindings/guest_component_type.o"
-if [[ ! -f "${GUEST_OBJ}" ]]; then
-    echo "ERROR: ${GUEST_OBJ} niet gevonden." >&2
-    echo "       Run: cd benchmarks/usb-bench-c && cmake --build build-wasi" >&2
-    exit 1
-fi
-
 echo "══════════════════════════════════════════════════"
 echo "  C4 build: rusb → libusb-wasi.a → WIT"
 echo "  Sysroot : ${SYSROOT}"

@@ -100,13 +100,6 @@ unsafe impl Sync for UsbTransfer {}
 unsafe impl Send for MyState {}
 unsafe impl Sync for MyState {}
 
-extern "system" fn iso_callback(transfer: *mut libusb1_sys::libusb_transfer) {
-    unsafe {
-        let completed = &*((*transfer).user_data as *const std::sync::atomic::AtomicBool);
-        completed.store(true, std::sync::atomic::Ordering::Release);
-    }
-}
-
 #[derive(Parser)]
 #[command(name = "usb-wasi-host", about, trailing_var_arg = true)]
 struct CliParser {
