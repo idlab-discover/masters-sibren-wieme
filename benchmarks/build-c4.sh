@@ -7,17 +7,17 @@
 # zodat het linkt tegen libusb-wasi.a i.p.v. vendored libusb te bouwen.
 #
 # Resultaat (C4 condition — wasi-rusb):
-#   usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/w_{bulk,ctrl,int,iso}.wasm
+#   benchmarks/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/w_{bulk,ctrl,int,iso}.wasm
 #
 # Gebruik:
-#   bash bench/build-c4.sh
+#   bash benchmarks/build-c4.sh
 #   just bench-build   (roept dit script ook aan)
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SYSROOT="${ROOT}/sysroot-wasi"
-BENCH_RS="${ROOT}/usb-bench-rs"
+BENCH_RS="${ROOT}/benchmarks/usb-bench-rs"
 
 # Sanity-check: libusb-wasi.a aanwezig?
 if [[ ! -f "${ROOT}/libusb-wasi/libusb-wasi.a" ]]; then
@@ -27,10 +27,10 @@ if [[ ! -f "${ROOT}/libusb-wasi/libusb-wasi.a" ]]; then
 fi
 
 # Sanity-check: guest_component_type.o aanwezig?
-GUEST_OBJ="${ROOT}/usb-bench-c/bindings/guest_component_type.o"
+GUEST_OBJ="${ROOT}/benchmarks/usb-bench-c/bindings/guest_component_type.o"
 if [[ ! -f "${GUEST_OBJ}" ]]; then
     echo "ERROR: ${GUEST_OBJ} niet gevonden." >&2
-    echo "       Run: cd usb-bench-c && cmake --build build-wasi" >&2
+    echo "       Run: cd benchmarks/usb-bench-c && cmake --build build-wasi" >&2
     exit 1
 fi
 

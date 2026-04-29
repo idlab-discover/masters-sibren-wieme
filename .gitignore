@@ -32,12 +32,13 @@ build_errors*.txt
 results/
 
 # ── CMake build directories ───────────────────────────────────────────────────
-usb-bench-c/build-native/
-usb-bench-c/build-wasi/
+benchmarks/usb-bench-c/build-native/
+benchmarks/usb-bench-c/build-wasi/
 
 # ── Rust benchmark build artefacts ───────────────────────────────────────────
-usb-bench-rs/target/
-usb-bench-rs/target-wasi-rusb/
+benchmarks/usb-bench-rs/target/
+benchmarks/usb-bench-rs/target-wasi-rusb/
+benchmarks/usb-native/target/
 
 # ── Super-repo specific ───────────────────────────────────────────────────────
 .claude/
@@ -49,7 +50,13 @@ wkg.lock
 wasi-usb/
 
 # ── Verouderde benchmark-artefacten (lokaal bewaard als referentie) ───────────
-benchmarks/
+# Enkel de oude benchmarks/-subdirs en scripts, niet de nieuwe usb-bench-*/
+benchmarks/c/
+benchmarks/rust/
+benchmarks/README.md
+benchmarks/build_all.sh
+benchmarks/run_benchmarks.sh
+benchmarks/plot.py
 
 # ── Thesis Overleaf export (lokale kopie, gesynchroniseerd via Overleaf) ─────
 Masterproef_Sibren_Overleaf/

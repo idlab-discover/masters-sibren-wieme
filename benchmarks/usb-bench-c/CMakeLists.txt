@@ -4,9 +4,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ---------------------------------------------------------------------------
-# Repository root (parent of this directory)
+# Repository root (two levels above: benchmarks/usb-bench-c/ → repo root)
 # ---------------------------------------------------------------------------
-get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/.." ABSOLUTE)
+get_filename_component(REPO_ROOT "${CMAKE_SOURCE_DIR}/../.." ABSOLUTE)
 set(LIBUSB_DIR "${REPO_ROOT}/libusb-wasi")
 
 # ---------------------------------------------------------------------------

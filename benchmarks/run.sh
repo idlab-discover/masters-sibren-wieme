@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# bench/run.sh — WASI-USB thesis benchmark harness
+# benchmarks/run.sh — WASI-USB thesis benchmark harness
 #
 # Runs all combinations of (workload × condition) and writes per-run CSV files
 # into results/<timestamp>/.
 #
 # Usage:
-#   sudo bench/run.sh [OPTIONS]
+#   sudo benchmarks/run.sh [OPTIONS]
 #
 # Options:
 #   --smoke           1 iteration per cell (quick sanity check)
@@ -38,11 +38,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-C_NATIVE_BIN="${REPO_ROOT}/usb-bench-c/build-native"
-C_WASI_BIN="${REPO_ROOT}/usb-bench-c/build-wasi"
-RS_NATIVE_BIN="${REPO_ROOT}/usb-bench-rs/target/release"
-RS_WASI_BIN="${REPO_ROOT}/usb-bench-rs/target/wasm32-wasip2/release"
-RS_WASI_RUSB_BIN="${REPO_ROOT}/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release"
+C_NATIVE_BIN="${REPO_ROOT}/benchmarks/usb-bench-c/build-native"
+C_WASI_BIN="${REPO_ROOT}/benchmarks/usb-bench-c/build-wasi"
+RS_NATIVE_BIN="${REPO_ROOT}/benchmarks/usb-bench-rs/target/release"
+RS_WASI_BIN="${REPO_ROOT}/benchmarks/usb-bench-rs/target/wasm32-wasip2/release"
+RS_WASI_RUSB_BIN="${REPO_ROOT}/benchmarks/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release"
 HOST="${REPO_ROOT}/usb-wasi-host/target/release/usb-wasi-host"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
