@@ -89,7 +89,7 @@ pub(crate) use bindings::Host_ as Host;
 struct TransferContext {
     sender: oneshot::Sender<Result<Vec<u8>, LibusbError>>,
     completed: Arc<AtomicBool>,
-    buffer: Box<[u8]>,
+    _buffer: Box<[u8]>,
     /// Shared with UsbTransfer so await-iso-transfer can read per-packet results.
     iso_packet_results: Arc<Mutex<Option<Vec<(u32, i32)>>>>,
 }
@@ -417,7 +417,7 @@ impl HostTransfer for MyState {
             let ctx = Box::new(TransferContext {
                 sender,
                 completed: usb_transfer.completed.clone(),
-                buffer: buffer_box,
+                _buffer: buffer_box,
                 iso_packet_results: iso_pr,
             });
 

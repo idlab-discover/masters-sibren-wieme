@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::VecDeque;
 use std::thread;
-use log::{debug, error, info, trace};
+use log::{debug, error, trace};
 use libc::timeval;
 use crate::instrument::CallTrace;
 use once_cell::sync::Lazy;
