@@ -6,27 +6,9 @@ on:
     branches: [main]
 
 jobs:
-  build-host:
-    name: Build host runtime
+  abi-up-to-date:
+    name: Check ABI files are up-to-date
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-
-    - name: Install libusb-dev
-      run: sudo apt-get update && sudo apt-get install -y libusb-1.0-0-dev pkg-config
-
-    - name: Install Rust stable
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          usb-wasi-host/target
-        key: ${{ runner.os }}-cargo-host-${{ hashFiles('usb-wasi-host/Cargo.lock', 'usb-wasi-host/Cargo.toml') }}
-        restore-keys: ${{ runner.os }}-cargo-host-
-
-    - name: Build usb-wasi-host
-      run: cargo build --release --manifest-path usb-wasi-host/Cargo.toml
+    - uses: WebAssembly/wit-abi-up-to-date@v17
