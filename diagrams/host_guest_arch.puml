@@ -7,7 +7,7 @@ skinparam defaultFontSize 12
 skinparam ArrowColor #444
 skinparam ArrowThickness 1.2
 
-title WASI-USB — Host/Guest Architecture
+title WASI-USB - Host/Guest Architecture
 
 skinparam rectangle {
   BackgroundColor<<guest>>   #DCEFFB
@@ -29,10 +29,10 @@ rectangle "**Guest (WebAssembly Component)**\n//wasm32-wasip2 sandbox//" as gues
 
 rectangle "**WIT Interface**\n//component:usb@0.2.1//" as wit <<wit>> {
   note as N1
-    device.wit       — list-devices, open, claim-interface, …
-    transfers.wit    — submit/await + iso extensions //(this work)//
-    descriptors.wit  — flattened device/config/endpoint records
-    hotplug.wit      — arrived/left flags
+    device.wit       - list-devices, open, claim-interface, …
+    transfers.wit    - submit/await + iso extensions //(this work)//
+    descriptors.wit  - flattened device/config/endpoint records
+    hotplug.wit      - arrived/left flags
   end note
 }
 

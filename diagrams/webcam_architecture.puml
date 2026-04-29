@@ -29,7 +29,7 @@ skinparam rectangle {
     BorderThickness<<runtime>>  2
 }
 
-title <size:16><b>WASI-USB Webcam — Architectuuroverzicht</b></size>
+title <size:16><b>WASI-USB Webcam - Architectuuroverzicht</b></size>
 
 ' ─── WASM Sandbox ────────────────────────────────────────────────────────────
 rectangle " WASM Sandbox  (webcam.wasm)" <<sandbox>> as SANDBOX {

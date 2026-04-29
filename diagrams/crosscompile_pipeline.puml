@@ -6,7 +6,7 @@ skinparam defaultFontName "Helvetica"
 skinparam defaultFontSize 11
 skinparam ArrowColor #444
 
-title C4 build pipeline — rusb → wasm32-wasip2 (no upstream forks)
+title C4 build pipeline - rusb → wasm32-wasip2 (no upstream forks)
 
 skinparam rectangle {
   BackgroundColor<<input>>  #DCEFFB
@@ -45,7 +45,7 @@ a     -down-> wasm
 gct   -down-> wasm
 
 note bottom of wasm
-  rusb and libusb1-sys are unmodified —
+  rusb and libusb1-sys are unmodified -
   only the pkg-config sysroot redirects linking to libusb-wasi.a.
 end note
 

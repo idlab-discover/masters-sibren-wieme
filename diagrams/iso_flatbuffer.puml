@@ -6,7 +6,7 @@ skinparam defaultFontName "Helvetica"
 skinparam defaultFontSize 11
 skinparam ArrowColor #444
 
-title Isochronous transfer — flat-buffer strategy\n//WIT extension contributed by this work//
+title Isochronous transfer - flat-buffer strategy\n//WIT extension contributed by this work//
 
 rectangle "**libusb_transfer**\n``num_iso_packets = 32``\n``length = 32 × 1024 = 32 768``" as xfer #FFEBC8 {
   rectangle "iso_packet_desc[]\n[0] length=1024 actual=...\n[1] length=1024 actual=...\n…\n[31] length=1024 actual=..." as descs #EDEDED
@@ -37,7 +37,7 @@ rectangle "**Guest** (e.g. webcam.rs)" as guest #DCEFFB {
 result --> guest : TransferResult
 
 note right of result #FFF6CC
-  list<list<u8>> is not supported in the stable component ABI —
+  list<list<u8>> is not supported in the stable component ABI -
   flat buffer + packets metadata = one copy across the boundary.
 end note
 

@@ -6,7 +6,7 @@ skinparam defaultFontName "Helvetica"
 skinparam defaultFontSize 12
 skinparam ArrowColor #444
 
-title Capability model — VendorID:ProductID allow-list filtering
+title Capability model - VendorID:ProductID allow-list filtering
 
 skinparam rectangle {
   BackgroundColor<<allowed>>  #D5EAD8
@@ -55,7 +55,7 @@ rectangle "**Guest (Wasm)**\n``component:usb/device.list-devices()``" as guest <
 rt --> guest : returns 2 devices
 
 note bottom of guest
-  No syscalls in the sandbox — no open(), no ioctl().
+  No syscalls in the sandbox - no open(), no ioctl().
   Denied devices are never returned by list-devices().
 end note
 
