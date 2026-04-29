@@ -47,3 +47,9 @@ benchmarks/results/
 usb-wasm/out/
 wkg.lock
 wasi-usb/
+
+# ── Thesis Overleaf export (lokale kopie, gesynchroniseerd via Overleaf) ─────
+Masterproef_Sibren_Overleaf/
+
+# ── Tijdelijke backups ────────────────────────────────────────────────────────
+*.bak
