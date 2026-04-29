@@ -202,11 +202,11 @@ gemarkeerd, zodat `--gc-sections` hem verwijdert.
 ```bash
 # Stap 1: Pak alle .o-bestanden uit het originele archief
 WASI_SDK=/opt/wasi-sdk
-REPO=/Users/sibrenwieme/Documents/Masterproef/wasi-usb
+REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || pwd)
 
 mkdir -p /tmp/repack_ar
 cd /tmp/repack_ar
-$WASI_SDK/bin/llvm-ar xv $REPO/libusb/libusb-wasi.a
+$WASI_SDK/bin/llvm-ar xv $REPO/libusb-wasi/libusb-wasi.a
 
 # Stap 2: Patch de run-export-vlaggen in cguest.o
 #
@@ -222,7 +222,7 @@ wasm-tools dump /tmp/cguest_modified.o | grep "__wasm_export_exports_wasi_cli"
 # → Func { flags: SymbolFlags(VISIBILITY_HIDDEN), ... }
 
 # Stap 3: Maak het nieuwe archief (zonder run-export-handler)
-$WASI_SDK/bin/llvm-ar rcs $REPO/libusb/libusb-wasi-rust.a \
+$WASI_SDK/bin/llvm-ar rcs $REPO/libusb-wasi/libusb-wasi-rust.a \
     /tmp/repack_ar/core.o \
     /tmp/repack_ar/descriptor.o \
     /tmp/repack_ar/hotplug.o \
@@ -237,7 +237,7 @@ $WASI_SDK/bin/llvm-ar rcs $REPO/libusb/libusb-wasi-rust.a \
 > `libusb-wasi.a` (MD5: `cb106e351040c50232c809624fe08845`). Als het archief
 > herbouwd wordt, moet je de offset opnieuw opzoeken via:
 > ```bash
-> wasm-tools dump libusb/libusb-wasi.a | grep -A1 "__wasm_export_exports_wasi_cli_run_run"
+> wasm-tools dump libusb-wasi/libusb-wasi.a | grep -A1 "__wasm_export_exports_wasi_cli_run_run"
 > ```
 > en de twee vlagbytes aanpassen.
 
@@ -247,10 +247,10 @@ $WASI_SDK/bin/llvm-ar rcs $REPO/libusb/libusb-wasi-rust.a \
 PKG_CONFIG_LIBDIR=$REPO/sysroot-wasi/usr/lib/pkgconfig \
 PKG_CONFIG_ALLOW_CROSS=1 \
 pkg-config --libs libusb-1.0
-# Verwacht: -L.../libusb -lusb-wasi-rust
+# Verwacht: -L.../libusb-wasi -lusb-wasi-rust
 
 # C4-binaries bevatten WIT-imports
-wasm-tools print usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/w_bulk.wasm \
+wasm-tools print benchmarks/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/w_bulk.wasm \
     | grep "component:usb" | head -5
 # Verwacht: (import "component:usb/device@0.2.1" ...)
 ```

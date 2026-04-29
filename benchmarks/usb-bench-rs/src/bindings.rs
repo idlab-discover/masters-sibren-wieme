@@ -13,6 +13,6 @@
 
 wit_bindgen::generate!({
     world: "guest",
-    path: "../wit",
+    path: "../../wit",
     generate_all,
 });

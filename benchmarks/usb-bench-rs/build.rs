@@ -22,7 +22,7 @@ fn main() {
         // wasi:cli/run@0.2.5 which Rust 1.93.1 does not provide.
         let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
         let obj = manifest
-            .parent().unwrap()   // wasi-usb/
+            .parent().unwrap()   // benchmarks/
             .join("usb-bench-c/bindings/guest_component_type.o");
         if obj.exists() {
             println!("cargo:rustc-link-arg={}", obj.display());
