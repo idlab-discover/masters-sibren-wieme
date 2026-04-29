@@ -51,7 +51,7 @@ totaal 20 meetcellen.
 | bulk | Bulk           | SanDisk 3.2Gen1 USB-stick       | 0781:5581 | 30× SCSI READ(10), 512 KB per transfer |
 | ctrl | Control        | WASI-USB Loopback device        | cafe:4002 | 1000× control transfers (RTT-verdeling) |
 | int  | Interrupt      | PS5 DualSense controller        | 054c:0ce6 | 1000× interrupt-IN poll (jitter) |
-| iso  | Isochronous    | Logitech Brio 100 webcam        | 046d:094c | 200× UVC YUYV-frame (doorvoer) |
+| iso  | Isochronous    | Logitech Brio 100 webcam        | 046d:094c | 500× UVC YUYV-frame (doorvoer) |
 
 ---
 
@@ -271,14 +271,15 @@ just bench-smoke
 
 ```bash
 # Standaardinstellingen (zie standaarden per workload in run.sh)
+# Default: bulk=100, ctrl=1000, int=1000, iso=500, warmup=10
 just bench-run
-# of: sudo bash bench/run.sh
+# of: sudo bash benchmarks/run.sh
 
 # Met aangepast aantal iteraties
-sudo bash bench/run.sh --iter 500 --warmup 50
+sudo bash benchmarks/run.sh --iter 500 --warmup 50
 
 # Alleen specifieke condities / workloads
-sudo bash bench/run.sh --conditions C3,C4,C5 --workloads bulk,ctrl
+sudo bash benchmarks/run.sh --conditions C3,C4,C5 --workloads bulk,ctrl
 
 # Dry-run: print commando's zonder uitvoeren
 bash bench/run.sh --dry-run --smoke

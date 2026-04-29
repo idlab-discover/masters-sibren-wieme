@@ -10,7 +10,7 @@
 # Options:
 #   --smoke           1 iteration per cell (quick sanity check)
 #   --iter N          iterations per cell (overrides per-workload defaults)
-#   --warmup N        warm-up iterations before timed run (default: 0)
+#   --warmup N        warm-up iterations before timed run (default: 10)
 #   --workloads LIST  comma-separated subset, e.g. ctrl,int  (default: all)
 #   --conditions LIST comma-separated subset, e.g. C1,C3     (default: all)
 #   --out-dir DIR     override results directory
@@ -47,7 +47,7 @@ HOST="${REPO_ROOT}/usb-wasi-host/target/release/usb-wasi-host"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SMOKE=0
-WARMUP=0
+WARMUP=10
 WORKLOADS="bulk,ctrl,int,iso"
 CONDITIONS="C1,C2,C3,C4,C5"
 OUT_DIR=""
@@ -78,7 +78,7 @@ default_iter() {  # $1 = workload
         bulk) echo 100  ;;
         ctrl) echo 1000 ;;
         int)  echo 1000 ;;
-        iso)  echo 200  ;;
+        iso)  echo 500  ;;
         *)    echo 100  ;;
     esac
 }
