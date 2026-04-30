@@ -111,7 +111,8 @@ build-libusb-vanilla:
     # autoconf) without running configure itself, so our explicit configure call below is the
     # only one that runs.
     autoreconf -fi
-    ./configure --disable-shared --enable-static --disable-examples-build --disable-tests-build
+    ./configure --disable-shared --enable-static --disable-examples-build --disable-tests-build \
+        --without-libudev
     # Remove stale object files from previous (partial) builds so make compiles everything fresh.
     make clean || true
     make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
