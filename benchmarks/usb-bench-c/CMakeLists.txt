@@ -15,17 +15,23 @@ set(LIBUSB_DIR "${REPO_ROOT}/libusb-wasi")
 #   Sources: src/csv.c  src/<name>.c
 # ---------------------------------------------------------------------------
 macro(bench_target _name)
-    # For WASI builds the SDK's libc (__main_void.o) already exports
-    # "wasi:cli/run@0.2.0#run" → exports_wasi_cli_run_run() → main().
-    # wasm_reactor.c provided the same bridge and conflicts; do not add it.
-    add_executable(${_name} src/csv.c src/${_name}.c)
+    if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+        # wasm_reactor.c provides a __attribute__((weak)) fallback for
+        # exports_wasi_cli_run_run() → main().  WASI SDK >= 25 ships a
+        # strong symbol in libc.a (__main_void.o) that silently wins;
+        # older SDK versions (Linux) have no such symbol and need the weak
+        # fallback to satisfy cguest.o's undefined reference.
+        add_executable(${_name} src/csv.c src/${_name}.c src/wasm_reactor.c)
+    else()
+        add_executable(${_name} src/csv.c src/${_name}.c)
+    endif()
     target_include_directories(${_name} PRIVATE src)
     target_compile_options(${_name} PRIVATE -Wall -Wextra)
 
     if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         # ── C2: wasi-libusb ─────────────────────────────────────────────────
-        # The WASI SDK libc exports wasi:cli/run → main() automatically.
-        # No wasm_reactor.c or -mexec-model= needed for wasip2.
+        # wasm_reactor.c provides the weak exports_wasi_cli_run_run fallback.
+        # No -mexec-model= flag needed for wasip2.
         target_include_directories(${_name} PRIVATE "${LIBUSB_DIR}/libusb")
         target_link_libraries(${_name} PRIVATE
             "${LIBUSB_DIR}/libusb-wasi.a"
