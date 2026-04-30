@@ -99,7 +99,7 @@ build-libusb-vanilla:
     #!/usr/bin/env bash
     set -euo pipefail
     # Use an absolute path so the skip-check and the final verify both agree on location.
-    TARGET="$(pwd)/libusb-vanilla/.libs/libusb-1.0.a"
+    TARGET="$(pwd)/libusb-vanilla/libusb/.libs/libusb-1.0.a"
     if [ -f "$TARGET" ]; then
         echo "libusb-vanilla already built, skipping."
         exit 0

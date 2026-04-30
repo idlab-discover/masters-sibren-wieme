@@ -79,7 +79,7 @@ else()
         # Fall back to the vendored libusb-vanilla submodule.
         # Build it first with: cd libusb-vanilla && ./autogen.sh && ./configure && make
         # or just run:  just bench-build  (which calls build-libusb-vanilla automatically)
-        set(_VANILLA_A "${REPO_ROOT}/libusb-vanilla/.libs/libusb-1.0.a")
+        set(_VANILLA_A "${REPO_ROOT}/libusb-vanilla/libusb/.libs/libusb-1.0.a")
         if(NOT EXISTS "${_VANILLA_A}")
             message(FATAL_ERROR
                 "System libusb-1.0 not found and vendored fallback is missing:\n"
