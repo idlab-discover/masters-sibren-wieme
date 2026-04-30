@@ -26,10 +26,8 @@ macro(bench_target _name)
 
     if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         # ── C2: wasi-libusb ─────────────────────────────────────────────────
-        # Reactor model: the component exports wasi:cli/run via cguest.o which
-        # calls exports_wasi_cli_run_run() (provided by wasm_reactor.c).
-        target_compile_options(${_name} PRIVATE -mexec-model=reactor)
-        target_link_options(${_name} PRIVATE -mexec-model=reactor)
+        # wasm_reactor.c provides exports_wasi_cli_run_run() which cguest.o
+        # calls to dispatch wasi:cli/run. No -mexec-model= needed for wasip2.
         target_include_directories(${_name} PRIVATE "${LIBUSB_DIR}/libusb")
         target_link_libraries(${_name} PRIVATE
             "${LIBUSB_DIR}/libusb-wasi.a"
