@@ -88,7 +88,9 @@ else()
                 "or:   just build-libusb-vanilla")
         endif()
         set(LIBUSB_INCLUDE_DIRS "${REPO_ROOT}/libusb-vanilla/libusb")
-        set(LIBUSB_LIBRARIES    "${_VANILLA_A}")
+        # Link udev and pthread explicitly: libusb's configure detects them and
+        # compiles them into the static archive, so the final binary needs them too.
+        set(LIBUSB_LIBRARIES    "${_VANILLA_A}" udev pthread)
         set(LIBUSB_LIBRARY_DIRS "")
         message(STATUS "  libusb source  : vendored libusb-vanilla")
         message(STATUS "  libusb archive : ${_VANILLA_A}")
