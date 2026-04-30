@@ -113,12 +113,20 @@ mod native {
                     return Err(anyhow!("device {:04x}:{:04x} not found", vid, pid));
                 }
 
-                // Detach kernel driver if active (video4linux / uvcvideo on Linux)
-                if libusb_kernel_driver_active(handle, iface as c_int) == 1 {
-                    let _ = libusb_detach_kernel_driver(handle, iface as c_int);
+                // Detach kernel UVC driver from ALL UVC interfaces (Linux).
+                // uvcvideo claims both interface 0 (VideoControl) and iface
+                // (VideoStreaming). Detaching only the streaming interface
+                // leaves VideoControl held by the kernel, causing BUSY when
+                // set_configuration is called or INVALID_PARAM on ISO submit.
+                // Loop from 0 to iface (inclusive) to release every UVC iface.
+                // Skip set_configuration: the device is already in config 1
+                // and calling set_configuration while any kernel driver holds
+                // any interface returns LIBUSB_ERROR_BUSY on Linux.
+                for i in 0..=(iface as c_int) {
+                    if libusb_kernel_driver_active(handle, i) == 1 {
+                        let _ = libusb_detach_kernel_driver(handle, i);
+                    }
                 }
-
-                check(libusb_set_configuration(handle, 1), "set_configuration")?;
                 check(libusb_claim_interface(handle, iface as c_int), "claim_interface")?;
 
                 // UVC probe/commit handshake — camera does not stream without this.
@@ -241,7 +249,6 @@ mod wasm {
     use anyhow::{anyhow, Result};
 
     // WIT types from the central bindings module (one generate! per binary).
-    use usb_bench_rs::bindings::component::usb::configuration::ConfigValue;
     use usb_bench_rs::bindings::component::usb::device::{list_devices, DeviceHandle};
     use usb_bench_rs::bindings::component::usb::errors::LibusbError;
     use usb_bench_rs::bindings::component::usb::transfers::{
@@ -347,11 +354,16 @@ mod wasm {
                 .find(|(_, d, _)| d.vendor_id == vid && d.product_id == pid)
                 .ok_or_else(|| anyhow!("device {:04x}:{:04x} not found", vid, pid))?;
             let handle = dev.open().map_err(|e| anyhow!("open: {:?}", e))?;
-            handle
-                .set_configuration(ConfigValue::Value(1))
-                .map_err(|e| anyhow!("set_configuration: {:?}", e))?;
-            if handle.kernel_driver_active(iface).unwrap_or(false) {
-                let _ = handle.detach_kernel_driver(iface);
+            // Detach kernel UVC driver from ALL UVC interfaces before claiming.
+            // uvcvideo holds both interface 0 (VideoControl) and iface
+            // (VideoStreaming). We must detach both before set_configuration /
+            // claim_interface, otherwise LIBUSB_ERROR_BUSY is returned.
+            // Skip set_configuration entirely: device is already in config 1
+            // and re-issuing it while any kernel driver is active → BUSY.
+            for i in 0..=iface {
+                if handle.kernel_driver_active(i).unwrap_or(false) {
+                    let _ = handle.detach_kernel_driver(i);
+                }
             }
             handle
                 .claim_interface(iface)

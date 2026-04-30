@@ -322,20 +322,14 @@ transfers need a real threading model, which is not yet standardised for WASI/Wa
 
 ### 7.3 Reactor model
 
-WASI programs export a run function instead of defining a `main`:
+WASI component programs are called via `wasi:cli/run@0.2.0#run`, which maps to the C
+symbol `exports_wasi_cli_run_run`. For `wasm32-wasip2` targets, the WASI SDK's libc
+provides this bridge automatically: `__main_void.o` in `libc.a` exports the run function
+and calls the program's `main()`. No `-mexec-model=reactor` flag or manual bridge file
+is required.
 
-```c
-// C
-bool exports_wasi_cli_run_run(void);
-```
-
-```rust
-// Rust
-#[unsafe(no_mangle)]
-pub extern "C" fn exports_wasi_cli_run_run() -> bool { true }
-```
-
-Compile with `-mexec-model=reactor` (C) or `crate-type = ["cdylib"]` (Rust).
+For Rust WASM components, the component model entry is wired up via `wit-bindgen` and
+`cargo-component` — no manual `no_mangle` export is needed either.
 
 ### 7.4 rusb -> WASM cross-compilation (C4)
 
@@ -372,7 +366,10 @@ via `benchmarks/usb-bench-rs/build.rs`.
 - **`libusb-wasi.a not found`**: Build it from `libusb-wasi/` as described in §6.1.
 - **`guest_component_type.o not found`**: Run the C2 cmake step first (`cmake --build benchmarks/usb-bench-c/build-wasi`).
 - **`error: could not find Cargo.toml`**: Make sure you are running cargo from the right crate root.
-- **`SCSI Command Failed`**: The USB drive is still mounted. Eject it before running the mass-storage or bulk benchmarks.
+- **`SCSI Command Failed`**: The USB drive is still mounted. Eject/unmount it before running the mass-storage or bulk benchmarks. On Linux, `run.sh` attempts to unmount automatically; on macOS it uses `diskutil unmount`.
 - **`Invalid data length for control transfer OUT`**: This was a bug in `libusb-wasi/libusb/os/wasi_usb.c` (line 973, `if (true)` stub). Fixed in submodule commit `e38f249`.
+- **`iso: LIBUSB_ERROR_INVALID_PARAM` / `LIBUSB_ERROR_BUSY` on Linux**: The `uvcvideo` kernel driver holds both UVC interface 0 (VideoControl) and interface 1 (VideoStreaming). The benchmarks now detach both before claiming; if you still see this, confirm that no other application (e.g. OBS, ffmpeg, v4l2) has the camera open.
+- **`iso: bytes=0` on macOS**: macOS `IOUSBDeviceFamily` holds the UVC camera exclusively. Native (C1/C3) and WASM (C2/C4/C5) iso benchmarks return 0 bytes on macOS; use Linux for real throughput measurements.
+- **`duplicate symbol: exports_wasi_cli_run_run`**: The WASI SDK libc already provides this bridge via `__main_void.o`. Do not add a custom `wasm_reactor.c` to C2 builds.
 - **Cargo doesn't rebuild after `.a` file changes**: Cargo doesn't watch external static libraries. Force a rebuild: `touch benchmarks/usb-bench-rs/build.rs`.
 - **`autogen.sh` configured for the wrong target**: `autogen.sh` runs configure for the native host at the end. Always re-run `./configure` with the WASI env vars afterwards (see §6.1).

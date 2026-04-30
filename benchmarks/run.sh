@@ -311,27 +311,73 @@ main() {
         echo "  Workload: ${wl}  VID:PID=${vidpid}  iter=${iters}"
         echo "────────────────────────────────────────────────────────────"
 
-        # On macOS, the OS mounts USB mass-storage automatically and the
-        # kernel driver blocks libusb from claiming the interface.
-        # Unmount (not eject) the disk so libusb can take over.
-        if [[ "${wl}" == "bulk" && "$(uname -s)" == "Darwin" && $DRY_RUN -eq 0 ]]; then
+        # USB mass-storage: unmount any filesystems on the drive so libusb
+        # can claim the BBB interface for raw SCSI transfers.
+        # macOS: use system_profiler + diskutil unmount
+        # Linux:  use lsblk to find the block device by USB VID/PID, then
+        #         umount all its mounted partitions.
+        if [[ "${wl}" == "bulk" && $DRY_RUN -eq 0 ]]; then
             local vid="${vidpid%%:*}"
             local pid="${vidpid##*:}"
-            local disk
-            # Find the disk node for the USB device by matching VID/PID in system_profiler
-            disk=$(system_profiler SPUSBDataType 2>/dev/null \
-                | awk -v v="${vid}" -v p="${pid}" '
-                    tolower($0) ~ "vendor id: 0x"v { found=1 }
-                    found && tolower($0) ~ "product id: 0x"p { found=2 }
-                    found==2 && /BSD Name:/ { gsub(/.*BSD Name: */, ""); gsub(/[[:space:]].*/, ""); print; exit }
-                ' | head -1)
-            if [[ -n "${disk}" ]]; then
-                echo "  [prep] Unmounting /dev/${disk} to allow libusb access..."
-                ${SUDO} diskutil unmount "/dev/${disk}" 2>/dev/null \
-                    && echo "  [prep] Unmounted /dev/${disk}" \
-                    || echo "  [prep] unmount failed (already unmounted?)"
-            else
-                echo "  [prep] Could not find disk node for ${vidpid} — bulk may fail if mounted"
+            if [[ "$(uname -s)" == "Darwin" ]]; then
+                local disk
+                # Find the disk node for the USB device by matching VID/PID in system_profiler
+                disk=$(system_profiler SPUSBDataType 2>/dev/null \
+                    | awk -v v="${vid}" -v p="${pid}" '
+                        tolower($0) ~ "vendor id: 0x"v { found=1 }
+                        found && tolower($0) ~ "product id: 0x"p { found=2 }
+                        found==2 && /BSD Name:/ { gsub(/.*BSD Name: */, ""); gsub(/[[:space:]].*/, ""); print; exit }
+                    ' | head -1)
+                if [[ -n "${disk}" ]]; then
+                    echo "  [prep] Unmounting /dev/${disk} to allow libusb access..."
+                    ${SUDO} diskutil unmount "/dev/${disk}" 2>/dev/null \
+                        && echo "  [prep] Unmounted /dev/${disk}" \
+                        || echo "  [prep] unmount failed (already unmounted?)"
+                else
+                    echo "  [prep] Could not find disk node for ${vidpid} — bulk may fail if mounted"
+                fi
+            elif [[ "$(uname -s)" == "Linux" ]]; then
+                # Find the /sys path for this USB device by VID/PID, then
+                # derive its block device name (sdX) via the 'block' subsystem link.
+                local sysdev
+                sysdev=$(find /sys/bus/usb/devices -maxdepth 2 -name idVendor 2>/dev/null \
+                    | while read -r f; do
+                        dir="$(dirname "$f")"
+                        v="$(cat "$f" 2>/dev/null)"
+                        p="$(cat "${dir}/idProduct" 2>/dev/null)"
+                        if [[ "${v}" == "${vid}" && "${p}" == "${pid}" ]]; then
+                            echo "${dir}"
+                            break
+                        fi
+                    done | head -1)
+                if [[ -n "${sysdev}" ]]; then
+                    # Walk descendant dirs for block/* entries
+                    local blockdev
+                    blockdev=$(find "${sysdev}" -name "uevent" 2>/dev/null \
+                        | xargs grep -l "^DEVTYPE=disk" 2>/dev/null \
+                        | head -1 | xargs -I{} dirname {} | xargs -I{} basename {})
+                    if [[ -n "${blockdev}" ]]; then
+                        echo "  [prep] Found USB block device /dev/${blockdev} for ${vidpid}"
+                        # Unmount all mounted partitions of this device
+                        local mounted
+                        mounted=$(lsblk -lno NAME,MOUNTPOINT "/dev/${blockdev}" 2>/dev/null \
+                            | awk '$2 != "" {print "/dev/" $1}')
+                        if [[ -n "${mounted}" ]]; then
+                            echo "${mounted}" | while read -r mnt; do
+                                echo "  [prep] Unmounting ${mnt}..."
+                                ${SUDO} umount "${mnt}" 2>/dev/null \
+                                    && echo "  [prep] Unmounted ${mnt}" \
+                                    || echo "  [prep] umount ${mnt} failed (already unmounted?)"
+                            done
+                        else
+                            echo "  [prep] /dev/${blockdev} has no mounted partitions — OK"
+                        fi
+                    else
+                        echo "  [prep] Could not find block device for ${vidpid} — bulk may fail if mounted"
+                    fi
+                else
+                    echo "  [prep] USB device ${vidpid} not found in /sys — bulk may fail if mounted"
+                fi
             fi
         fi
 

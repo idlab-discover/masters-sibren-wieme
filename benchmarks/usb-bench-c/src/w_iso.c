@@ -139,9 +139,16 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* Detach kernel UVC driver if present (Linux) */
-    if (libusb_kernel_driver_active(handle, iface) == 1)
-        libusb_detach_kernel_driver(handle, iface);
+    /* Detach kernel UVC driver from ALL UVC interfaces (Linux).
+     * uvcvideo claims both interface 0 (VideoControl) and interface 1+
+     * (VideoStreaming).  Detaching only the streaming interface leaves the
+     * VideoControl interface held by the kernel, which causes INVALID_PARAM
+     * or BUSY errors on control transfers and alt-setting changes.
+     * Loop from 0 up to and including iface so we release every UVC iface. */
+    for (int i = 0; i <= (int)iface; i++) {
+        if (libusb_kernel_driver_active(handle, i) == 1)
+            libusb_detach_kernel_driver(handle, i);
+    }
 
     /* Claim the video-streaming interface at alt-setting 0 first */
     int rc = libusb_claim_interface(handle, iface);
