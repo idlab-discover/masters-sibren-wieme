@@ -239,11 +239,12 @@ just bench-build
 ```
 
 This runs in order:
-1. **C1** - `cmake -B benchmarks/usb-bench-c/build-native benchmarks/usb-bench-c`
-2. **C2** - cmake with the WASI toolchain file (produces `guest_component_type.o` as a side effect)
-3. **C3 + C5** - `cargo build --release --bins` targeting the current host
-4. **C4** - `bash benchmarks/build-c4.sh` (pkg-config redirected to WASI sysroot)
-5. **C5** - `cargo build --release --bins --target wasm32-wasip2`
+1. **libusb-vanilla** - builds `libusb-vanilla/.libs/libusb-1.0.a` from source (skipped if already present). The C1 CMake build uses system libusb when `pkg-config` finds it; otherwise it falls back to this vendored archive automatically. You don't need to install `libusb-1.0-0-dev` / `libusb-devel` for this to work.
+2. **C1** - `cmake -B benchmarks/usb-bench-c/build-native benchmarks/usb-bench-c`
+3. **C2** - cmake with the WASI toolchain file (produces `guest_component_type.o` as a side effect)
+4. **C3 + C5** - `cargo build --release --bins` targeting the current host
+5. **C4** - `bash benchmarks/build-c4.sh` (pkg-config redirected to WASI sysroot)
+6. **C5** - `cargo build --release --bins --target wasm32-wasip2`
 
 ### 6.3 Running benchmarks
 

@@ -93,8 +93,25 @@ enumerate-devices-go: build-host build-enumerate-devices-go
 
 # ── Benchmark suite (thesis evaluation) ─────────────────────────────────────
 
+# Build vendored libusb-vanilla (native host) — used as C1 fallback when system libusb-1.0 is absent.
+# Skipped automatically when .libs/libusb-1.0.a already exists.
+build-libusb-vanilla:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    TARGET="libusb-vanilla/.libs/libusb-1.0.a"
+    if [ -f "$TARGET" ]; then
+        echo "libusb-vanilla already built, skipping."
+        exit 0
+    fi
+    echo "Building libusb-vanilla (native)..."
+    cd libusb-vanilla
+    ./autogen.sh
+    ./configure --disable-shared --enable-static
+    make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+    echo "Done: $TARGET"
+
 # Build all benchmark binaries (C1+C2 via CMake, C3+C5 via Cargo)
-bench-build:
+bench-build: build-libusb-vanilla
     # C1 — native libusb (C)
     cmake -B benchmarks/usb-bench-c/build-native benchmarks/usb-bench-c
     cmake --build benchmarks/usb-bench-c/build-native
@@ -115,8 +132,8 @@ bench-run *ARGS:
     sudo bash benchmarks/run.sh {{ARGS}}
 
 # Quick smoke run — 1 iteration per cell, no real devices needed for dry-run
-bench-smoke:
-    sudo bash benchmarks/run.sh --smoke
+bench-smoke *ARGS:
+    sudo bash benchmarks/run.sh --smoke {{ARGS}}
 
 # Dry-run: print all commands without executing
 bench-dry:

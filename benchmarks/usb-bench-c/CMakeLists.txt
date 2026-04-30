@@ -66,10 +66,33 @@ if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
     endif()
 else()
     message(STATUS "Configuring for native host (C1 — native-libusb)")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBUSB REQUIRED libusb-1.0)
-    message(STATUS "  libusb include : ${LIBUSB_INCLUDE_DIRS}")
-    message(STATUS "  libusb libs    : ${LIBUSB_LIBRARIES}")
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(LIBUSB libusb-1.0)
+    endif()
+
+    if(LIBUSB_FOUND)
+        message(STATUS "  libusb source  : system (pkg-config)")
+        message(STATUS "  libusb include : ${LIBUSB_INCLUDE_DIRS}")
+        message(STATUS "  libusb libs    : ${LIBUSB_LIBRARIES}")
+    else()
+        # Fall back to the vendored libusb-vanilla submodule.
+        # Build it first with: cd libusb-vanilla && ./autogen.sh && ./configure && make
+        # or just run:  just bench-build  (which calls build-libusb-vanilla automatically)
+        set(_VANILLA_A "${REPO_ROOT}/libusb-vanilla/.libs/libusb-1.0.a")
+        if(NOT EXISTS "${_VANILLA_A}")
+            message(FATAL_ERROR
+                "System libusb-1.0 not found and vendored fallback is missing:\n"
+                "  ${_VANILLA_A}\n"
+                "Run:  just bench-build   (builds libusb-vanilla automatically)\n"
+                "or:   just build-libusb-vanilla")
+        endif()
+        set(LIBUSB_INCLUDE_DIRS "${REPO_ROOT}/libusb-vanilla/libusb")
+        set(LIBUSB_LIBRARIES    "${_VANILLA_A}")
+        set(LIBUSB_LIBRARY_DIRS "")
+        message(STATUS "  libusb source  : vendored libusb-vanilla")
+        message(STATUS "  libusb archive : ${_VANILLA_A}")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
