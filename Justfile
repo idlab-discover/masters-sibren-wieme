@@ -98,16 +98,25 @@ enumerate-devices-go: build-host build-enumerate-devices-go
 build-libusb-vanilla:
     #!/usr/bin/env bash
     set -euo pipefail
-    TARGET="libusb-vanilla/.libs/libusb-1.0.a"
+    # Use an absolute path so the skip-check and the final verify both agree on location.
+    TARGET="$(pwd)/libusb-vanilla/.libs/libusb-1.0.a"
     if [ -f "$TARGET" ]; then
         echo "libusb-vanilla already built, skipping."
         exit 0
     fi
     echo "Building libusb-vanilla (native)..."
     cd libusb-vanilla
-    ./autogen.sh
-    ./configure --disable-shared --enable-static
+    # autogen.sh ends with 'exec ./configure ...' which would run configure with wrong flags.
+    # Use autoreconf -fi instead: it only regenerates the build-system files (aclocal, automake,
+    # autoconf) without running configure itself, so our explicit configure call below is the
+    # only one that runs.
+    autoreconf -fi
+    ./configure --disable-shared --enable-static --disable-examples-build --disable-tests-build
     make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+    if [ ! -f "$TARGET" ]; then
+        echo "ERROR: build finished but $TARGET was not created" >&2
+        exit 1
+    fi
     echo "Done: $TARGET"
 
 # Build all benchmark binaries (C1+C2 via CMake, C3+C5 via Cargo)
