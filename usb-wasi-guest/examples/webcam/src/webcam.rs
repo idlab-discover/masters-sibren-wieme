@@ -29,6 +29,11 @@ const UVC_VS_PROBE_CONTROL: u16 = 0x0100;
 const UVC_VS_COMMIT_CONTROL: u16 = 0x0200;
 const UVC_GET_CUR: u8 = 0x81;
 const UVC_SET_CUR: u8 = 0x01;
+
+// ─── Preferred camera ─────────────────────────────────────────────────────────
+/// Logitech Brio 100 — preferred over any other UVC device when present.
+const BRIO_VID: u16 = 0x046d;
+const BRIO_PID: u16 = 0x094c;
 /// Returns true if `data` is a complete JPEG (starts with SOI, ends with EOI).
 fn is_complete_jpeg(data: &[u8]) -> bool {
     data.len() >= 4
@@ -100,10 +105,21 @@ fn open_uvc_stream(index: u32) -> Result<WebcamFrameStream> {
         uvc.len()
     );
 
-    let (dev, _, _) = uvc
-        .drain(..)
-        .nth(index as usize)
-        .ok_or_else(|| anyhow::anyhow!("No UVC device at index {}", index))?;
+    // Prefer the Logitech Brio (046d:094c) when it is present. Fall back to
+    // index-based selection so other cameras still work when the Brio is absent.
+    let brio_pos = uvc
+        .iter()
+        .position(|(_, desc, _)| desc.vendor_id == BRIO_VID && desc.product_id == BRIO_PID);
+
+    let (dev, _, _) = if let Some(pos) = brio_pos {
+        println!("  -> Selecting Logitech Brio {:04x}:{:04x} at UVC position {}.", BRIO_VID, BRIO_PID, pos);
+        uvc.remove(pos)
+    } else {
+        println!("  -> Logitech Brio not found, falling back to UVC index {}.", index);
+        uvc.drain(..)
+            .nth(index as usize)
+            .ok_or_else(|| anyhow::anyhow!("No UVC device at index {}", index))?
+    };
 
     // 2. Open handle.
     let handle = dev.open().map_err(|e| anyhow::anyhow!("{:?}", e))?;
