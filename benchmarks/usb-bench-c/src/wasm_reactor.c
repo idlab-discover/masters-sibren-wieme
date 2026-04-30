@@ -10,6 +10,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /* Provided by each benchmark's main file. */
 int main(int argc, char **argv);
