@@ -15,12 +15,21 @@ set(LIBUSB_DIR "${REPO_ROOT}/libusb-wasi")
 #   Sources: src/csv.c  src/<name>.c
 # ---------------------------------------------------------------------------
 macro(bench_target _name)
-    add_executable(${_name} src/csv.c src/${_name}.c)
+    if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
+        # wasm_reactor.c provides exports_wasi_cli_run_run() → main() bridge.
+        add_executable(${_name} src/csv.c src/${_name}.c src/wasm_reactor.c)
+    else()
+        add_executable(${_name} src/csv.c src/${_name}.c)
+    endif()
     target_include_directories(${_name} PRIVATE src)
     target_compile_options(${_name} PRIVATE -Wall -Wextra)
 
     if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
         # ── C2: wasi-libusb ─────────────────────────────────────────────────
+        # Reactor model: the component exports wasi:cli/run via cguest.o which
+        # calls exports_wasi_cli_run_run() (provided by wasm_reactor.c).
+        target_compile_options(${_name} PRIVATE -mexec-model=reactor)
+        target_link_options(${_name} PRIVATE -mexec-model=reactor)
         target_include_directories(${_name} PRIVATE "${LIBUSB_DIR}/libusb")
         target_link_libraries(${_name} PRIVATE
             "${LIBUSB_DIR}/libusb-wasi.a"
