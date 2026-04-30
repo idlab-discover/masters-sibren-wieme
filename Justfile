@@ -112,6 +112,8 @@ build-libusb-vanilla:
     # only one that runs.
     autoreconf -fi
     ./configure --disable-shared --enable-static --disable-examples-build --disable-tests-build
+    # Remove stale object files from previous (partial) builds so make compiles everything fresh.
+    make clean || true
     make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
     if [ ! -f "$TARGET" ]; then
         echo "ERROR: build finished but $TARGET was not created" >&2
