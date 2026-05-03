@@ -1,3 +1,13 @@
+//! DISABLED — this file is not compiled as part of the benchmark suite.
+//!
+//! Isochronous transfers require an async event loop that WASIp2 guest
+//! components cannot run (no guest threads, no wasi-threads stabilised yet).
+//! The webcam demo in usb-wasi-guest/examples/webcam serves as qualitative
+//! validation instead. See Future Work §16.1.2 in the thesis.
+//!
+//! To reactivate: rename back to w_iso.rs, re-add the [[bin]] entry in
+//! Cargo.toml, and update the WIT interface to use WASIp3 stream<u8>.
+//!
 //! W-iso benchmark — isochronous throughput on a Logitech Brio webcam.
 //!
 //! Submits isochronous IN transfers on the UVC Video Streaming interface and

@@ -178,7 +178,7 @@ just mass-storage -- /path/to/file  # FAT32 read on a USB drive
 
 ## 6. Benchmark Suite (C1-C5)
 
-The benchmark suite evaluates five conditions across four USB workloads:
+The benchmark suite evaluates five conditions across three USB workloads (bulk, control, interrupt):
 
 | Condition | Language | Target | Transfer path |
 |-----------|----------|--------|--------------|
@@ -251,7 +251,11 @@ This runs in order:
 You need the USB devices connected before running:
 - SanDisk USB drive (bulk workload) - must NOT be mounted; eject first: `diskutil eject /Volumes/<name>` on macOS or `umount /dev/sdX` on Linux
 - Raspberry Pi Pico running the USB identity firmware (control + interrupt workloads)
-- Logitech Brio (or similar UVC webcam) for the iso workload
+
+> **Note on isochronous (iso)**: the iso workload is intentionally excluded from the
+> benchmark harness. Isochronous transfers require an async event loop that a WASIp2
+> guest component cannot run. The webcam demo (`just webcam`) provides qualitative
+> validation instead. See Future Work §16.1.2 in the thesis for the full explanation.
 
 ```bash
 just bench-run          # full run (requires USB devices + sudo)
@@ -263,13 +267,9 @@ just bench-analyze      # analyse the most recent results/ directory
 You can restrict to specific workloads:
 
 ```bash
-just bench-smoke --workloads ctrl,iso
+just bench-smoke --workloads ctrl,int
 just bench-run --workloads bulk
 ```
-
-> **macOS note on iso**: the iso workload will time out on macOS for C1 and C3 (native
-> builds) because `IOUSBDeviceFamily` holds the UVC camera exclusively. You get
-> `bytes=0` but no error. Real isochronous throughput measurements need Linux.
 
 ### 6.4 C4 build details
 
@@ -368,8 +368,6 @@ via `benchmarks/usb-bench-rs/build.rs`.
 - **`error: could not find Cargo.toml`**: Make sure you are running cargo from the right crate root.
 - **`SCSI Command Failed`**: The USB drive is still mounted. Eject/unmount it before running the mass-storage or bulk benchmarks. On Linux, `run.sh` attempts to unmount automatically; on macOS it uses `diskutil unmount`.
 - **`Invalid data length for control transfer OUT`**: This was a bug in `libusb-wasi/libusb/os/wasi_usb.c` (line 973, `if (true)` stub). Fixed in submodule commit `e38f249`.
-- **`iso: LIBUSB_ERROR_INVALID_PARAM` / `LIBUSB_ERROR_BUSY` on Linux**: The `uvcvideo` kernel driver holds both UVC interface 0 (VideoControl) and interface 1 (VideoStreaming). The benchmarks now detach both before claiming; if you still see this, confirm that no other application (e.g. OBS, ffmpeg, v4l2) has the camera open.
-- **`iso: bytes=0` on macOS**: macOS `IOUSBDeviceFamily` holds the UVC camera exclusively. Native (C1/C3) and WASM (C2/C4/C5) iso benchmarks return 0 bytes on macOS; use Linux for real throughput measurements.
-- **`duplicate symbol: exports_wasi_cli_run_run`**: The WASI SDK libc already provides this bridge via `__main_void.o`. Do not add a custom `wasm_reactor.c` to C2 builds.
+- **`duplicate symbol: exports_wasi_cli_run_run`**: The WASI SDK libc already provides this bridge via `__main_void.o`. The C2 benchmark builds include a `wasm_reactor.c` with `__attribute__((weak))` so the strong libc symbol wins on WASI SDK ≥ 25 and the weak fallback is used on older SDKs.
 - **Cargo doesn't rebuild after `.a` file changes**: Cargo doesn't watch external static libraries. Force a rebuild: `touch benchmarks/usb-bench-rs/build.rs`.
 - **`autogen.sh` configured for the wrong target**: `autogen.sh` runs configure for the native host at the end. Always re-run `./configure` with the WASI env vars afterwards (see §6.1).

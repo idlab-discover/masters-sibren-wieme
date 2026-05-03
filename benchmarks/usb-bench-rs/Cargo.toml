@@ -23,10 +23,10 @@ path = "src/bin/w_ctrl.rs"
 name = "w_int"
 path = "src/bin/w_int.rs"
 
-# w_iso binary (C3 native-rusb via libusb1-sys, C5 wasi raw-WIT)
-[[bin]]
-name = "w_iso"
-path = "src/bin/w_iso.rs"
+# w_iso is intentionally excluded. Isochronous transfers require an async event
+# loop that WASIp2 guest components cannot run. The source is kept as
+# src/bin/w_iso.rs.disabled for a future WASIp3 implementation.
+# See Future Work §16.1.2 in the thesis.
 
 # Shared deps (work on both native and wasm32-wasip2)
 [dependencies]

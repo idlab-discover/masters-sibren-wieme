@@ -1,4 +1,16 @@
 /*
+ * DISABLED — this file is not compiled as part of the benchmark suite.
+ *
+ * Isochronous transfers require an async event loop that WASIp2 guest
+ * components cannot run (no guest threads, no wasi-threads stabilised yet).
+ * The webcam demo in usb-wasi-guest/examples/webcam serves as qualitative
+ * validation instead. See Future Work §16.1.2 in the thesis.
+ *
+ * To reactivate: re-add bench_target(w_iso) to CMakeLists.txt and update
+ * the WIT interface to use WASIp3 stream<u8>.
+ */
+
+/*
  * w_iso.c — W-iso benchmark: isochronous UVC streaming on a Logitech Brio.
  *
  * Activates the UVC video-streaming interface (alt-setting 1), then issues

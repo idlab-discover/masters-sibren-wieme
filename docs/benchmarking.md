@@ -25,8 +25,8 @@ Uitgebreide documentatie van de benchmark-suite voor de masterthesis
 
 ## 1. Benchmark-matrix
 
-De benchmark vergelijkt USB-toegang in **vijf condities** over **vier workloads**,
-wat neerkomt op 20 meetcellen.
+De benchmark vergelijkt USB-toegang in **vijf condities** over **drie workloads**,
+wat neerkomt op 15 meetcellen.
 
 ### Condities
 
@@ -51,13 +51,20 @@ wat neerkomt op 20 meetcellen.
 | bulk | Bulk           | SanDisk 3.2Gen1 USB-stick       | 0781:5581 | 30× SCSI READ(10), 512 KB per transfer |
 | ctrl | Control        | WASI-USB Loopback device        | cafe:4002 | 1000× control transfers (RTT-verdeling) |
 | int  | Interrupt      | PS5 DualSense controller        | 054c:0ce6 | 1000× interrupt-IN poll (jitter) |
-| iso  | Isochronous    | Logitech Brio 100 webcam        | 046d:094c | 500× UVC YUYV-frame (doorvoer) |
+
+> **Waarom geen isochronous (iso) workload?**
+> Isochrone transfers vereisen een asynchrone event-loop die in een WASIp2
+> guest component niet kan draaien (geen guest threads; `wasi-threads` is
+> nog niet gestabiliseerd). De isochrone pipeline wordt kwalitatief gevalideerd
+> via de webcam-demo in `usb-wasi-guest/examples/webcam` (25–30 fps op een
+> Logitech Brio). De `w_iso` bronbestanden blijven bewaard voor een toekomstige
+> WASIp3-implementatie. Zie thesis Future Work §16.1.2 voor de volledige uitleg.
 
 ---
 
 ## 2. Hardwarevereisten
 
-Voor een volledige meetronde zijn alle vier apparaten nodig.
+Voor een volledige meetronde zijn de drie workload-apparaten nodig.
 Individuele workloads kunnen ook gewoon apart gedraaid worden.
 
 | Apparaat | Aansluiting | Opmerkingen |
@@ -65,7 +72,6 @@ Individuele workloads kunnen ook gewoon apart gedraaid worden.
 | SanDisk 3.2Gen1 (of gelijkwaardige USB 3.x stick) | USB-A / USB-C | Ontkoppel OS-mountpoint vóór de test |
 | WASI-USB Loopback device (`cafe:4002`) | USB | Raspberry Pi Pico of gelijkwaardige loopback firmware |
 | PS5 DualSense (of DualShock 4) | USB-C | Losgekoppeld van draadloze modus |
-| Logitech Brio 100 (of gelijkwaardige UVC-webcam) | USB-A | Sluit geen andere videosoftware |
 
 ---
 
@@ -104,7 +110,7 @@ wasi-usb/
 │   │   ├── w_bulk.c              # W-bulk benchmark
 │   │   ├── w_ctrl.c              # W-ctrl benchmark
 │   │   ├── w_int.c               # W-int benchmark
-│   │   └── w_iso.c               # W-iso benchmark
+│   │   └── w_iso.c               # W-iso (disabled, bewaard als WASIp3-referentie)
 │   ├── bindings/
 │   │   ├── guest.{h,c}           # WIT C-bindingen (gegenereerd door wit-bindgen)
 │   │   └── guest_component_type.o # component-type sectie voor wasm-component-ld
@@ -120,7 +126,7 @@ wasi-usb/
 │   │       ├── w_bulk.rs         # W-bulk benchmark
 │   │       ├── w_ctrl.rs         # W-ctrl benchmark
 │   │       ├── w_int.rs          # W-int benchmark
-│   │       └── w_iso.rs          # W-iso benchmark
+│   │       └── w_iso.rs.disabled # W-iso (disabled, bewaard als WASIp3-referentie)
 │   ├── build.rs                  # geeft cguest_component_type.o mee als linker arg (C4)
 │   ├── Cargo.toml                # bevat c4-rusb-wasi feature
 │   └── target-wasi-rusb/         # C4 build-output (apart van C5)
@@ -271,7 +277,7 @@ just bench-smoke
 
 ```bash
 # Standaardinstellingen (zie standaarden per workload in run.sh)
-# Default: bulk=100, ctrl=1000, int=1000, iso=500, warmup=10
+# Default: bulk=100, ctrl=1000, int=1000, warmup=10
 just bench-run
 # of: sudo bash benchmarks/run.sh
 
@@ -341,7 +347,7 @@ python3 bench/analyze.py results/... --plots out/figs/
 
 Het analyse-script produceert:
 1. **Correctheidstabel** - SHA-256 checksums per workload over alle 5 condities
-2. **Doorvoer-staafdiagram** - MB/s per conditie (W-bulk, W-iso)
+2. **Doorvoer-staafdiagram** - MB/s per conditie (W-bulk)
 3. **RTT-violinplot** - verdeling per conditie (W-ctrl, W-int)
 4. **CPU-gebruik** - user vs sys-tijd per conditie
 5. **Memory-gebruik** - RSS-piek + guest-linear-memory (WASM-condities)
@@ -365,7 +371,7 @@ checksum_hex, notes
 |------|------|--------------|
 | `timestamp_iso` | string | ISO-8601 tijdstip van de meting |
 | `condition` | string | `native-libusb`, `wasi-libusb`, `native-rusb`, `wasi-rusb`, `wasi-raw-wit` |
-| `workload` | string | `bulk`, `ctrl`, `int`, `iso` |
+| `workload` | string | `bulk`, `ctrl`, `int` |
 | `iteration` | integer | volgnummer (0-gebaseerd) |
 | `bytes` | integer | overgedragen bytes in deze iteratie |
 | `duration_ns` | integer | RTT in nanoseconden (getimed gedeelte) |
@@ -373,7 +379,7 @@ checksum_hex, notes
 | `sys_cpu_us` | integer | sys-CPU-tijd delta (µs) via `getrusage` |
 | `rss_peak_kb` | integer | maximale RSS in kB na de iteratie |
 | `guest_mem_bytes` | integer | WASM lineair geheugen in bytes (0 voor native) |
-| `checksum_hex` | string | SHA-256 van de payload (bulk/iso), leeg voor ctrl/int |
+| `checksum_hex` | string | SHA-256 van de payload (bulk), leeg voor ctrl/int |
 | `notes` | string | vrij veld (leeg tenzij fout) |
 
 ---

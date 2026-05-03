@@ -28,7 +28,11 @@
 #   bulk  SCSI READ(10) on USB mass-storage  (SanDisk 3.2Gen1     0781:5581)
 #   ctrl  Control transfers on loopback dev  (WASI-USB Loopback   cafe:4002)
 #   int   Interrupt poll on PS5 DualSense    (PS5 DualSense       054c:0ce6)
-#   iso   Isochronous UVC on Logitech Brio   (Logitech Brio 100   046d:094c)
+#
+# Note: isochronous (iso) workload is intentionally excluded. Iso transfers
+# require an async event loop that cannot run inside a WASIp2 guest component.
+# The webcam demo (usb-wasi-guest/examples/webcam) serves as qualitative
+# validation instead. See Future Work §16.1.2 for the full explanation.
 #
 # Compatible with bash 3.2+ (macOS default shell).
 
@@ -48,7 +52,7 @@ HOST="${REPO_ROOT}/usb-wasi-host/target/release/usb-wasi-host"
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SMOKE=0
 WARMUP=10
-WORKLOADS="bulk,ctrl,int,iso"
+WORKLOADS="bulk,ctrl,int"
 CONDITIONS="C1,C2,C3,C4,C5"
 OUT_DIR=""
 USE_SUDO=1
@@ -78,7 +82,6 @@ default_iter() {  # $1 = workload
         bulk) echo 100  ;;
         ctrl) echo 1000 ;;
         int)  echo 1000 ;;
-        iso)  echo 500  ;;
         *)    echo 100  ;;
     esac
 }
@@ -93,7 +96,6 @@ vidpid_for() {  # $1 = workload
         bulk) echo "0781:5581" ;;
         ctrl) echo "cafe:4002" ;;
         int)  echo "054c:0ce6" ;;
-        iso)  echo "046d:094c" ;;
         *)    echo "0000:0000" ;;
     esac
 }
@@ -379,14 +381,6 @@ main() {
                     echo "  [prep] USB device ${vidpid} not found in /sys — bulk may fail if mounted"
                 fi
             fi
-        fi
-
-        # On macOS, the OS UVC camera driver (AVFoundation / IOUSBLib) will
-        # hold the camera interface if any app has it open (Photo Booth, Zoom,
-        # FaceTime, Teams, …).  libusb_claim_interface will then return
-        # LIBUSB_ERROR_ACCESS / LIBUSB_ERROR_BUSY.  Close all camera apps first.
-        if [[ "${wl}" == "iso" && "$(uname -s)" == "Darwin" && $DRY_RUN -eq 0 ]]; then
-            echo "  [prep] macOS iso: ensure no app (Photo Booth, Zoom, …) is using the webcam"
         fi
 
         for cond in "${COND_LIST[@]}"; do

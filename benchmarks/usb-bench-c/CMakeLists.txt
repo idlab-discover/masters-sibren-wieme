@@ -114,13 +114,16 @@ endif()
 bench_target(w_bulk)   # W-bulk : SCSI READ(10) on USB mass-storage
 bench_target(w_ctrl)   # W-ctrl : GET_DESCRIPTOR on Arduino Nano 33 BLE
 bench_target(w_int)    # W-int  : interrupt poll on PS5 DualSense
-bench_target(w_iso)    # W-iso  : isochronous UVC stream on Logitech Brio
+# w_iso is intentionally not built. Isochronous transfers require an async
+# event loop that WASIp2 guest components cannot run. The source is kept in
+# src/w_iso.c as a reference for a future WASIp3 implementation.
+# See Future Work §16.1.2 in the thesis.
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 message(STATUS "")
-message(STATUS "  Targets : w_bulk  w_ctrl  w_int  w_iso")
+message(STATUS "  Targets : w_bulk  w_ctrl  w_int")
 message(STATUS "  Platform: ${CMAKE_SYSTEM_NAME}")
 message(STATUS "  Suffix  : ${CMAKE_EXECUTABLE_SUFFIX}")
 message(STATUS "")
