@@ -1,14 +1,11 @@
-# Thesis - context, scope and chapter mapping
+# Thesis — context, scope and chapter mapping
 
 This document links the codebase to the master's thesis manuscript.
 It's meant as a reference for three groups:
 
-1. **Readers of the repo** who want to know which thesis chapter discusses
-   a piece of code.
-2. **The defense committee** who want to map claims in the manuscript to
-   evidence in the source tree.
-3. **Me** writing the remaining chapters and needing a quick overview of
-   which docs cover which arguments.
+1. Readers of the repo who want to know which thesis chapter discusses a piece of code.
+2. The defense committee who want to map claims in the manuscript to evidence in the source tree.
+3. Me, for writing the remaining chapters and keeping track of which docs cover which arguments.
 
 The thesis manuscript itself lives under `Masterproef_Sibren_Overleaf/`
 (gitignored, kept in sync with Overleaf).
@@ -222,10 +219,12 @@ plantuml -tpdf diagrams/*.puml
 
 ## 7. Acknowledgements
 
-Code, advice and feedback gratefully received from:
-- Warre Dujardin, Wouter Hennen, Robbe Leroy (prior thesis work)
-- Friedrich Vandenberghe, Michiel Vankenhove (counsellors)
-- Merlijn Sebrechts, Bruno Volckaert (promotors)
+**Promotors:** Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
+
+**Begeleiders:** ing. Michiel Vankenhove, Friedrich Vandenberghe
+
+**Voorgangers** (the thesis students who built what this work extends):
+Wouter Hennen, Warre Dujardin, Robbe Leroy
 
 This work is partially supported by the **ELASTIC project**, funded by the
 Smart Networks and Services Joint Undertaking (SNS JU) under the European
