@@ -43,7 +43,7 @@ from scipy import stats
 
 # ── Palette & style ──────────────────────────────────────────────────────────
 
-CONDITION_ORDER = ["native-libusb", "wasi-libusb", "native-rusb", "wasi-raw-wit"]
+CONDITION_ORDER = ["native-libusb", "wasi-libusb", "native-rusb", "wasi-rusb", "wasi-raw-wit"]
 CONDITION_LABELS = {
     "native-libusb": "C1\nnative-libusb",
     "wasi-libusb":   "C2\nwasi-libusb",
@@ -422,7 +422,9 @@ def plot_wrapper_overhead(df: pd.DataFrame, out_dir: Path, fmt: str):
 
 PAIRS = [
     ("native-libusb", "wasi-libusb",  "C1↔C2  WASI cost (C)"),
-    ("native-rusb",   "wasi-raw-wit", "C3↔C5  WASI cost (Rust)"),
+    ("native-rusb",   "wasi-rusb",    "C3↔C4  rusb→WASM cost"),
+    ("native-rusb",   "wasi-raw-wit", "C3↔C5  WASI cost (Rust, raw WIT)"),
+    ("wasi-rusb",     "wasi-raw-wit", "C4↔C5  rusb wrapper overhead"),
     ("native-libusb", "native-rusb",  "C1↔C3  Language effect (native)"),
     ("wasi-libusb",   "wasi-raw-wit", "C2↔C5  Language effect (WASI)"),
 ]
