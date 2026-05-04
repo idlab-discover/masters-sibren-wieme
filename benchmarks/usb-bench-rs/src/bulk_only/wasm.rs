@@ -142,6 +142,12 @@ impl WasmTransport {
                 let _ = await_transfer(&xfer);
             }
 
+            // BBB spec requires CLEAR_FEATURE(HALT) on both bulk pipes after a
+            // BOT reset. Without this, the SanDisk leaves both endpoints stalled
+            // and every subsequent CBW returns LIBUSB_ERROR_IO.
+            let _ = handle.clear_halt(bulk_in);
+            let _ = handle.clear_halt(bulk_out);
+
             return Ok(Self {
                 handle,
                 bulk_in,

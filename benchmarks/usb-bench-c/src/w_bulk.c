@@ -494,6 +494,12 @@ int main(int argc, char **argv)
         dummy, 0,     /* no data */
         1000);
 
+    /* ── Clear HALT on both bulk endpoints ───────────────────────────────── */
+    /* Required by the BBB spec after a BOT Reset. Without this, the SanDisk
+     * leaves both pipes stalled and every subsequent CBW fails with -EIO. */
+    libusb_clear_halt(handle, ep_in);
+    libusb_clear_halt(handle, ep_out);
+
     /* ── TEST UNIT READY ─────────────────────────────────────────────────── */
     if (scsi_test_unit_ready(handle, ep_in, ep_out) != 0) {
         fprintf(stderr, "TEST UNIT READY failed\n");
