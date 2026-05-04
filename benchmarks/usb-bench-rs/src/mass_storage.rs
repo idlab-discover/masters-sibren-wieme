@@ -48,10 +48,16 @@ impl<T: BulkTransport> ScsiDevice<T> {
     /// Initialise the SCSI device: run TEST UNIT READY + READ CAPACITY (10)
     /// to validate the device and discover the block geometry.
     pub fn new(mut transport: T) -> Result<Self> {
-        // SCSI TEST UNIT READY — 6-byte CDB, no data phase
-        transport
-            .command_out(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00], None)
-            .map_err(|e| anyhow!("TEST UNIT READY failed: {e}"))?;
+        // SCSI TEST UNIT READY — 6-byte CDB, no data phase.
+        // Non-fatal: some drives (notably the SanDisk 3.2Gen1 used in the
+        // benchmark suite) ignore the very first CBW after open and only
+        // start responding from the second command onward. Mirrors the
+        // behaviour of w_bulk.c, which logs the failure and continues.
+        if let Err(e) =
+            transport.command_out(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00], None)
+        {
+            eprintln!("TEST UNIT READY failed (non-fatal): {e}");
+        }
 
         // SCSI READ CAPACITY (10) — 10-byte CDB, 8-byte response
         let data = transport
