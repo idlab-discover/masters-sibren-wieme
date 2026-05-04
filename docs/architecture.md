@@ -144,7 +144,7 @@ The host is a single Rust binary built from four source files:
 
 | File | Lines | Role |
 |------|------:|------|
-| `main.rs` | 982 | WIT method implementations, CLI, transfer callback, Wasmtime setup |
+| `main.rs` | ~975 | WIT method implementations, CLI, transfer callback, Wasmtime setup |
 | `usb_backend.rs` | 545 | `HostUsbBackend` trait + `LibusbBackend` implementation |
 | `instrument.rs` | 182 | Per-call duration + Linux ctx-switch tracing |
 | `host.rs` | 309 | Generated WIT bindings (do not edit) |

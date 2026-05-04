@@ -4,7 +4,7 @@ This document covers the concrete contributions. For each one it explains what t
 
 It goes together with [architecture.md](./architecture.md), which describes the finished system. This document explains the choices and the things that didn't work on the first try.
 
-The starting point is the prior work of Wouter Hennen (initial WIT-based host, single-backend, synchronous-only) and Robbe Leroy (`libusb-wasi.a` with the `wasi_usb.c` backend and cguest bindings). Everything below is built on top of that baseline.
+The starting point is the prior work of Wouter Hennen and Warre Dujardin (initial WIT-based host, single-backend, synchronous-only) and Robbe Leroy (`libusb-wasi.a` with the `wasi_usb.c` backend and cguest bindings). Everything below is built on top of that baseline.
 
 ---
 
