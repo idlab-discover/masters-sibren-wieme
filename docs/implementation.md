@@ -15,11 +15,10 @@ The starting point is the prior work of Wouter Hennen and Warre Dujardin (initia
 | 1 | Backend abstraction (`HostUsbBackend` trait) | `usb-wasi-host/src/usb_backend.rs` |
 | 2 | Isochronous transfer API + flat-buffer strategy | `wit/transfers.wit`, `usb-wasi-host/src/main.rs` |
 | 3 | Resource-lifecycle correctness (3 critical bug fixes) | `usb-wasi-host/src/main.rs`, `libusb-wasi/libusb/os/wasi_usb.c` |
-| 4 | Tokio oneshot async-transfer pattern | `usb-wasi-host/src/main.rs` |
-| 5 | Host instrumentation (`instrument.rs`) | `usb-wasi-host/src/instrument.rs` |
-| 6 | C4 cross-compile pipeline (rusb to WASM, no fork) | `sysroot-wasi/`, `benchmarks/build-c4.sh` |
-| 7 | UVC webcam guest (smart-guest CPS workload) | `usb-wasi-guest/examples/webcam/` |
-| 8 | Five-condition benchmark suite (C1-C5) | `benchmarks/usb-bench-c/`, `benchmarks/usb-bench-rs/` |
+| 4 | Host instrumentation (`instrument.rs`) | `usb-wasi-host/src/instrument.rs` |
+| 5 | C4 cross-compile pipeline (rusb to WASM, no fork) | `sysroot-wasi/`, `benchmarks/build-c4.sh` |
+| 6 | UVC webcam guest (smart-guest CPS workload) | `usb-wasi-guest/examples/webcam/` |
+| 7 | Five-condition benchmark suite (C1-C5) | `benchmarks/usb-bench-c/`, `benchmarks/usb-bench-rs/` |
 
 ---
 
@@ -204,53 +203,7 @@ A synchronous backend in an async-by-design host is a mismatch. The fix is the s
 
 ---
 
-## 4. Async Transfer — Tokio Oneshot Pattern
-
-USB transfers are inherently async: `libusb_submit_transfer` returns immediately and the completion is signalled later via a C callback on libusb's event thread. The bridge to Wasmtime's async runtime uses a Tokio oneshot channel per transfer.
-
-```rust
-struct TransferContext {
-    sender:             oneshot::Sender<Result<Vec<u8>, LibusbError>>,
-    completed:          Arc<AtomicBool>,
-    buffer:             Box<[u8]>,
-    iso_packet_results: Arc<Mutex<Option<Vec<(u32, i32)>>>>,
-}
-
-// In submit_transfer:
-let (sender, receiver) = oneshot::channel();
-let ctx = Box::new(TransferContext { sender, ... });
-(*transfer_ptr).user_data = Box::into_raw(ctx) as *mut _;
-(*transfer_ptr).callback  = transfer_callback;
-libusb_submit_transfer(transfer_ptr);
-usb_transfer.receiver = Some(receiver);
-
-// The C callback (libusb event thread):
-extern "system" fn transfer_callback(transfer: *mut libusb_transfer) {
-    unsafe {
-        let ctx = Box::from_raw((*transfer).user_data as *mut TransferContext);
-        let result = parse_completion_status(transfer);
-        ctx.completed.store(true, Ordering::SeqCst);
-        let _ = ctx.sender.send(result);
-        libusb_free_transfer(transfer);
-        // ctx drops here — buffer freed, sender consumed
-    }
-}
-
-// In await_transfer (Tokio thread):
-async fn await_transfer(&mut self, self_: Resource<UsbTransfer>) -> ... {
-    let receiver = self.table.get_mut(&self_).unwrap().receiver.take().unwrap();
-    let data = receiver.await?;    // Tokio yields here; libusb thread wakes us
-    /* … */
-}
-```
-
-Oneshot fits because every transfer has exactly one producer (the callback) and one consumer (`await-transfer`). `Receiver::await` cooperates with Wasmtime's async component support without blocking the executor — a `Condvar` would block a Tokio worker thread.
-
-The `Arc<AtomicBool>` for `completed` gives both the C callback (writer) and the Drop path (reader) a stable reference without a mutex. The flag transitions at most once per transfer lifetime, so an atomic load in the Drop path is sufficient.
-
----
-
-## 5. Instrumentation — `instrument.rs`
+## 4. Instrumentation — `instrument.rs`
 
 The thesis evaluation needs per-call latency attribution: how much of the total transfer time is host-side overhead vs. USB bus time vs. Wasmtime boundary crossing. Without per-call data, the WASI overhead claim is unfalsifiable.
 
@@ -297,7 +250,7 @@ On Linux, `/proc/self/status` exposes `voluntary_ctxt_switches` and `nonvoluntar
 
 ---
 
-## 6. C4 Cross-Compile Pipeline
+## 5. C4 Cross-Compile Pipeline
 
 ### The problem
 
@@ -345,7 +298,7 @@ Key properties of this approach: `rusb` and `libusb1-sys` are unmodified crates.
 
 ---
 
-## 7. UVC Webcam Guest
+## 6. UVC Webcam Guest
 
 The webcam guest is a concrete example of the dumb-host principle: a complex protocol (UVC) running entirely inside the Wasm sandbox, with the host doing nothing USB-protocol-specific.
 
@@ -394,7 +347,7 @@ The host's `main.rs` doesn't parse UVC headers, doesn't understand frame boundar
 
 ---
 
-## 8. Five-Condition Benchmark Suite
+## 7. Five-Condition Benchmark Suite
 
 Documented in detail in [benchmarking.md](./benchmarking.md). The short version:
 
@@ -416,7 +369,7 @@ The same C source compiles for C1 and C2 (only the link target differs). The sam
 |------|--------|-------------|
 | `wit/transfers.wit` | Extended | iso-packet-status, iso-packet, transfer-result.packets |
 | `wit/device.wit` | Extended | transfer-options.iso_packets |
-| `usb-wasi-host/src/main.rs` | Largely rewritten | TransferContext, ISO callback, Tokio oneshot, three-state Drop, borrow-bug fix |
+| `usb-wasi-host/src/main.rs` | Extended | ISO callback, three-state Drop, borrow-bug fix |
 | `usb-wasi-host/src/usb_backend.rs` | New | `HostUsbBackend` trait + `LibusbBackend` |
 | `usb-wasi-host/src/instrument.rs` | New | `CallTrace` RAII tracing |
 | `libusb-wasi/libusb/os/wasi_usb.c` | Patched | Deferred-completion fix for IN_FLIGHT race |

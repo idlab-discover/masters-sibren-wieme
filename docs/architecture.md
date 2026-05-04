@@ -218,7 +218,7 @@ The allow-list is consulted inside the C callback so disallowed devices never en
 
 `instrument.rs` provides a RAII `CallTrace` guard that, on drop, logs the wall-clock duration of the host method and (on Linux) voluntary/non-voluntary context switch deltas from `/proc/self/status`.
 
-Activated via `RUST_LOG=wasi_usb_trace=info`. Used in the thesis evaluation to attribute overhead to specific WIT calls. See [implementation.md §5](./implementation.md#5-instrumentation--instrumentrs) for how it's used and why the fast path is essentially free when disabled.
+Activated via `RUST_LOG=wasi_usb_trace=info`. Used in the thesis evaluation to attribute overhead to specific WIT calls. See [implementation.md §4](./implementation.md#4-instrumentation--instrumentrs) for how it's used and why the fast path is essentially free when disabled.
 
 ---
 

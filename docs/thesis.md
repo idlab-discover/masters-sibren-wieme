@@ -79,9 +79,9 @@ Per chapter, these are the docs to look at:
 | 2 | Background and Related Work | This file (§1.5 prior work) |
 | 3 | Problem Statement | [`architecture.md`](./architecture.md) §3 (capability vs containers) |
 | 4 | System Architecture | [`architecture.md`](./architecture.md) §1-§7 |
-| 5 | Implementation | [`implementation.md`](./implementation.md) §1-§7 |
-| 6 | Use Cases & Experimental Setup | [`implementation.md`](./implementation.md) §7-§8, [`benchmarking.md`](./benchmarking.md) |
-| 7 | Evaluation | [`benchmarking.md`](./benchmarking.md), [`implementation.md`](./implementation.md) §5 (instrumentation) |
+| 5 | Implementation | [`implementation.md`](./implementation.md) §1-§6 |
+| 6 | Use Cases & Experimental Setup | [`implementation.md`](./implementation.md) §6-§7, [`benchmarking.md`](./benchmarking.md) |
+| 7 | Evaluation | [`benchmarking.md`](./benchmarking.md), [`implementation.md`](./implementation.md) §4 (instrumentation) |
 | 8 | Discussion | [`architecture.md`](./architecture.md) §3.3 (limitations), [`implementation.md`](./implementation.md) §2 (rejected alternatives) |
 | 9 | Conclusion and Future Work | This file (§3) |
 | 10 | Societal Reflection | (manuscript only) |
@@ -116,21 +116,21 @@ Full chapter and section list, used as a writing checklist.
 - 4.3 WIT Interfaces and WASI Preview 3 → [`architecture.md` §2](./architecture.md#2-wit-interface-design)
 - 4.4 Host Architecture → [`architecture.md` §4](./architecture.md#4-host-runtime)
 - 4.5 Multithreading Design → [`architecture.md` §5](./architecture.md#5-async-transfers--the-tokio-oneshot-pattern), [§8](./architecture.md#8-threading-model--summary)
-- 4.6 Guest Architecture and Use Cases → [`implementation.md` §7](./implementation.md#7-uvc-webcam-guest)
+- 4.6 Guest Architecture and Use Cases → [`implementation.md` §6](./implementation.md#6-uvc-webcam-guest)
 - 4.7 Architectural Reflection
 
 ### Chapter 5 - Implementation
 - 5.1 Project and Code Structure → [README.md](../README.md)
 - 5.2 WIT Interface Implementation → [`implementation.md` §2](./implementation.md#2-isochronous-transfer-api)
 - 5.3 libusb Backend Integration → [`implementation.md` §1](./implementation.md#1-backend-abstraction--hostusbbackend-trait)
-- 5.4 rusb Backend Integration → [`implementation.md` §6](./implementation.md#6-c4-cross-compile-pipeline)
-- 5.5 Host Runtime Implementation → [`implementation.md` §3, §4](./implementation.md#3-resource-lifecycle-bug-fixes)
-- 5.6 Multithreading in the Implementation → [`implementation.md` §4](./implementation.md#4-async-transfer--tokio-oneshot-pattern)
+- 5.4 rusb Backend Integration → [`implementation.md` §5](./implementation.md#5-c4-cross-compile-pipeline)
+- 5.5 Host Runtime Implementation → [`implementation.md` §3](./implementation.md#3-resource-lifecycle-bug-fixes)
+- 5.6 Multithreading in the Implementation → [`architecture.md` §5](./architecture.md#5-async-transfers--the-tokio-oneshot-pattern)
 
 ### Chapter 6 - Use Cases and Experimental Setup
 - 6.1 Evaluation Goals → [`benchmarking.md` §1](./benchmarking.md)
 - 6.2 Proof-of-Concept Guest Applications
-- 6.3 Camera and Computer Vision Pipeline → [`implementation.md` §7](./implementation.md#7-uvc-webcam-guest)
+- 6.3 Camera and Computer Vision Pipeline → [`implementation.md` §6](./implementation.md#6-uvc-webcam-guest)
 - 6.4 Benchmark and Stress-Test Tools → [`benchmarking.md`](./benchmarking.md)
 - 6.5 Experimental Setup
   - 6.5.1 Hardware Configuration
@@ -141,8 +141,8 @@ Full chapter and section list, used as a writing checklist.
 - 7.1 Performance: Latency and Throughput → [`benchmarking.md`](./benchmarking.md)
   - 7.1.1 Single-Threaded Baseline
   - 7.1.2 Multithreaded Scenarios
-- 7.2 Cyber-Physical Demos → [`implementation.md` §7](./implementation.md#7-uvc-webcam-guest)
-- 7.3 Resource Usage: CPU and Memory → [`implementation.md` §5](./implementation.md#5-instrumentation--instrumentrs)
+- 7.2 Cyber-Physical Demos → [`implementation.md` §6](./implementation.md#6-uvc-webcam-guest)
+- 7.3 Resource Usage: CPU and Memory → [`implementation.md` §4](./implementation.md#4-instrumentation--instrumentrs)
 - 7.4 Security and Isolation Analysis → [`architecture.md` §3](./architecture.md#3-capability-based-security-model)
 - 7.5 Summary Evaluation
 
