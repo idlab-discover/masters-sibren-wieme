@@ -97,6 +97,40 @@ cargo build --release --bins --target wasm32-wasip2 \
 
 ## Running
 
+### Pre-flight: recovering a stuck SanDisk (Linux)
+
+Before running any bulk workload, the SanDisk's internal Bulk-Only Transport state machine should be clean. If a previous run was interrupted mid-transfer (Ctrl-C, panic, timeout), the drive can stay in a stuck state where every subsequent CBW returns `r=-1` or `r=-7`. The harness's prep step handles unmount and `usb-storage` unbind, but it cannot recover from a stuck BBB state — only a re-enumeration can.
+
+Two recovery paths, in order of escalation:
+
+```bash
+# 1. Soft port reset (works most of the time).
+#    Replace 4-2 with the actual port your SanDisk shows up on
+#    (find it with: ls /sys/bus/usb/devices/ and grep VID:PID).
+echo '4-2' | sudo tee /sys/bus/usb/drivers/usb/unbind
+sleep 1
+echo '4-2' | sudo tee /sys/bus/usb/drivers/usb/bind
+sleep 2
+```
+
+If the soft reset still leaves the drive returning IO errors:
+
+```bash
+# 2. Physical unplug, wait 15 seconds, plug back in.
+#    The 15s isn't superstition — internal caps on USB sticks hold
+#    firmware state during short unplugs. A full discharge resets the
+#    BBB state machine reliably.
+```
+
+After either recovery, the auto-mount usually triggers. Unmount and unbind `usb-storage` before launching the bench:
+
+```bash
+sudo umount /media/$USER/Untitled 2>/dev/null   # adjust mount path
+just bench-smoke --workloads bulk
+```
+
+The harness will then run cleanly. If you see `TEST UNIT READY failed` as a non-fatal warning followed by valid throughput numbers, that's expected — the drive sometimes needs one CBW to wake up.
+
 ### Quick sanity check
 
 ```bash
