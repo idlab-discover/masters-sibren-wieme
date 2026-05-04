@@ -99,37 +99,38 @@ cargo build --release --bins --target wasm32-wasip2 \
 
 ### Pre-flight: recovering a stuck SanDisk (Linux)
 
-Before running any bulk workload, the SanDisk's internal Bulk-Only Transport state machine should be clean. If a previous run was interrupted mid-transfer (Ctrl-C, panic, timeout), the drive can stay in a stuck state where every subsequent CBW returns `r=-1` or `r=-7`. The harness's prep step handles unmount and `usb-storage` unbind, but it cannot recover from a stuck BBB state — only a re-enumeration can.
+If a previous run was interrupted mid-transfer (Ctrl-C, panic, timeout), the SanDisk's internal Bulk-Only Transport state machine can stay stuck. Symptom: every CBW returns `r=-1` or `r=-7`, every iteration aborts at 0 MB/s, and the harness keeps retrying without progress. The harness's prep step handles unmount and `usb-storage` unbind, but it cannot recover from a stuck BBB state — that lives inside the drive's own firmware.
 
-Two recovery paths, in order of escalation:
+The host-side soft reset is **not enough** for a stuck SanDisk:
 
 ```bash
-# 1. Soft port reset (works most of the time).
-#    Replace 4-2 with the actual port your SanDisk shows up on
-#    (find it with: ls /sys/bus/usb/devices/ and grep VID:PID).
+# Soft port reset — this only re-enumerates from the host side.
+# The drive keeps power through its internal caps, so the firmware
+# state is preserved. Worth trying once, but don't expect it to
+# unstick a fully wedged BBB state machine.
 echo '4-2' | sudo tee /sys/bus/usb/drivers/usb/unbind
 sleep 1
 echo '4-2' | sudo tee /sys/bus/usb/drivers/usb/bind
 sleep 2
 ```
 
-If the soft reset still leaves the drive returning IO errors:
+If the soft reset doesn't restore throughput (CBWs still fail with `r=-1`), there's only one reliable path:
 
 ```bash
-# 2. Physical unplug, wait 15 seconds, plug back in.
-#    The 15s isn't superstition — internal caps on USB sticks hold
-#    firmware state during short unplugs. A full discharge resets the
-#    BBB state machine reliably.
+# Physical unplug, wait 15 seconds, plug back in.
+# The 15s isn't superstition — internal caps on USB sticks keep the
+# firmware powered during short unplugs. A full discharge is what
+# actually resets the BBB state machine.
 ```
 
-After either recovery, the auto-mount usually triggers. Unmount and unbind `usb-storage` before launching the bench:
+After plugging back in, the auto-mount usually fires. Unmount before the bench:
 
 ```bash
 sudo umount /media/$USER/Untitled 2>/dev/null   # adjust mount path
 just bench-smoke --workloads bulk
 ```
 
-The harness will then run cleanly. If you see `TEST UNIT READY failed` as a non-fatal warning followed by valid throughput numbers, that's expected — the drive sometimes needs one CBW to wake up.
+A non-fatal `TEST UNIT READY failed` warning followed by valid throughput numbers is expected — the drive sometimes needs one CBW to wake up. Sustained `r=-1` across all five conditions means it's still stuck and needs another physical unplug.
 
 ### Quick sanity check
 
