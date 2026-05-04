@@ -79,7 +79,7 @@ done
 # Default iterations
 default_iter() {  # $1 = workload
     case "$1" in
-        bulk) echo 500   ;;   # 500 × 64 KiB = 32 MiB per cell
+        bulk) echo 1500  ;;   # 1500 × 64 KiB = 96 MiB per cell, ~12 s
         ctrl) echo 10000 ;;   # tight RTT distribution incl. p99
         int)  echo 10000 ;;   # jitter analysis needs distribution tails
         *)    echo 100   ;;

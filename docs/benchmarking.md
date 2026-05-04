@@ -112,7 +112,7 @@ just bench-smoke       # 1 iteration per cell, all conditions and workloads
 ### Full measurement run
 
 ```bash
-just bench-run         # default iterations per workload (bulk=500, ctrl=10000, int=10000), warmup=100
+just bench-run         # default iterations per workload (bulk=1500, ctrl=10000, int=10000), warmup=100
 
 # Restrict to specific workloads or conditions
 just bench-run --workloads bulk,ctrl
