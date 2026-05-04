@@ -1,7 +1,7 @@
 /*
  * w_int.c — W-int benchmark: USB interrupt-transfer RTT on a PS5 DualSense.
  *
- * Polls the interrupt-IN endpoint (0x81) of interface 0 and records the
+ * Polls the interrupt-IN endpoint (0x84) of interface 3 and records the
  * host-side RTT (nanoseconds) for each HID input report.
  *
  * Thesis conditions served by this single source file:
@@ -39,8 +39,8 @@
 #define DEFAULT_ITERATIONS 1000u
 
 /* HID interface/endpoint geometry for the PS5 DualSense */
-#define IFACE              0u
-#define EP_IN              0x81u     /* interrupt IN */
+#define IFACE              3u
+#define EP_IN              0x84u     /* interrupt IN */
 #define PKT_SIZE           64u       /* max packet size for this endpoint */
 #define TIMEOUT_MS         500u
 

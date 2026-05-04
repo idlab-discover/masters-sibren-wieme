@@ -9,7 +9,7 @@
 //! | native host         | C3        | `native-rusb`         |
 //! | wasm32-wasip2       | C5        | `wasi-raw-wit`        |
 //!
-//! Default device: PS5 DualSense `054c:0ce6` (interface 0, endpoint 0x81,
+//! Default device: PS5 DualSense `054c:0ce6` (interface 3, endpoint 0x84,
 //! 64-byte HID input report).  Override VID:PID on the command line.
 //!
 //! # Usage
@@ -53,8 +53,8 @@ mod native {
     use std::time::Duration;
 
     // Default endpoint + packet geometry for PS5 DualSense
-    const IFACE: u8 = 0;
-    const EP_IN: u8 = 0x81;
+    const IFACE: u8 = 3;
+    const EP_IN: u8 = 0x84;
     const PKT_SIZE: usize = 64;
 
     pub struct IntDevice {
@@ -111,8 +111,8 @@ mod wasm {
         await_transfer, TransferOptions, TransferSetup, TransferType,
     };
 
-    const IFACE: u8 = 0;
-    const EP_IN: u8 = 0x81;
+    const IFACE: u8 = 3;
+    const EP_IN: u8 = 0x84;
     const PKT_SIZE: u32 = 64;
 
     pub struct IntDevice {
@@ -129,12 +129,14 @@ mod wasm {
                 .find(|(_, d, _)| d.vendor_id == vid && d.product_id == pid)
                 .ok_or_else(|| anyhow!("device {:04x}:{:04x} not found", vid, pid))?;
             let handle = dev.open().map_err(|e| anyhow!("open: {:?}", e))?;
-            handle
-                .set_configuration(ConfigValue::Value(1))
-                .map_err(|e| anyhow!("set_configuration: {:?}", e))?;
+            // Detach kernel HID driver before set_configuration; otherwise the
+            // host returns LIBUSB_ERROR_BUSY because hid-playstation holds iface 3.
             if handle.kernel_driver_active(IFACE).unwrap_or(false) {
                 let _ = handle.detach_kernel_driver(IFACE);
             }
+            handle
+                .set_configuration(ConfigValue::Value(1))
+                .map_err(|e| anyhow!("set_configuration: {:?}", e))?;
             handle
                 .claim_interface(IFACE)
                 .map_err(|e| anyhow!("claim_interface: {:?}", e))?;
