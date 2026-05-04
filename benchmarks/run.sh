@@ -384,6 +384,24 @@ main() {
                             echo "  [prep] /dev/${blockdev} has no mounted partitions — OK"
                         fi
                     fi
+                    # Port reset: unbind+bind the whole USB device on the usb
+                    # driver. This re-enumerates the port and clears any stuck
+                    # BBB state on the drive (otherwise CBW transfers can fail
+                    # with r=-1 / r=-7 even after usb-storage unbind).  The
+                    # kernel re-attaches usb-storage automatically after bind;
+                    # we unbind it again right after the reset settles.
+                    local usb_unbind="/sys/bus/usb/drivers/usb/unbind"
+                    local usb_bind="/sys/bus/usb/drivers/usb/bind"
+                    if [[ -w "${usb_unbind}" || $(id -u) -eq 0 ]]; then
+                        echo "  [prep] Port reset: unbind+bind ${port} on usb driver"
+                        echo "${port}" | ${SUDO} tee "${usb_unbind}" >/dev/null 2>&1 \
+                            || echo "  [prep] usb unbind failed"
+                        sleep 1
+                        echo "${port}" | ${SUDO} tee "${usb_bind}" >/dev/null 2>&1 \
+                            || echo "  [prep] usb bind failed"
+                        sleep 2
+                    fi
+
                     # Unbind usb-storage from every interface of this device.
                     # libusb_set_auto_detach_kernel_driver() works on Linux but
                     # races with udev re-probing; an explicit unbind right
