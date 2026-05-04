@@ -2,7 +2,9 @@
 
 This document describes the architecture of the WASI-USB framework: the host/guest split, the WIT interface design, the security model, the host runtime, and how async transfers work across the Wasm boundary.
 
-For the concrete contributions — design decisions, bug fixes, what was actually changed — see [implementation.md](./implementation.md).
+**Build history**: the initial host runtime, WIT interface and bulk/control transfer support were built by Wouter Hennen and Warre Dujardin (2024). The async transfer pattern and `libusb-wasi.a` guest library were added by Robbe Leroy (2025). The isochronous extension, backend abstraction (`HostUsbBackend` trait), instrumentation and the C1–C5 benchmark suite are contributions of this thesis (Sibren Wieme, 2026).
+
+For the concrete design decisions and bug fixes in this thesis's contributions, see [implementation.md](./implementation.md).
 
 ---
 
@@ -62,6 +64,8 @@ cancel-transfer: func(self_: borrow<transfer>);                        // BORROW
 When the guest passes a `borrow<transfer>`, Wasmtime allocates a temporary ResourceTable slot for the duration of the host call, separate from the slot that owns the resource. Wasmtime cleans up that borrow slot itself after the call returns. The host must not call `table.delete` on it — see [implementation.md §3.1](./implementation.md#31-the-borrow-bug) for the crash this caused in practice.
 
 ### 2.3 Isochronous Transfer Extension
+
+*Contribution of this thesis (Sibren Wieme, 2026).*
 
 Isochronous transfers (camera, audio) deliver multiple variable-length packets per submit, with per-packet status. The original WIT didn't model this. The extension uses a flat-buffer + sidecar metadata strategy compatible with the WASI component ABI:
 
@@ -184,7 +188,9 @@ Each has a `Drop` impl that handles the unsafe cleanup (`libusb_unref_device`, `
 
 ## 5. Async Transfers — The Tokio Oneshot Pattern
 
-USB transfers are inherently asynchronous: `libusb_submit_transfer` queues the transfer and returns immediately; completion is signalled later via a C callback fired from libusb's event thread. We bridge this to Wasmtime's async runtime using a Tokio oneshot channel per transfer.
+*Implemented by Robbe Leroy (2025).*
+
+USB transfers are inherently asynchronous: `libusb_submit_transfer` queues the transfer and returns immediately; completion is signalled later via a C callback fired from libusb's event thread. The bridge to Wasmtime's async runtime uses a Tokio oneshot channel per transfer.
 
 ![Transfer lifecycle](../diagrams/transfer_lifecycle.svg)
 
@@ -215,6 +221,8 @@ The allow-list is consulted inside the C callback so disallowed devices never en
 ---
 
 ## 7. Instrumentation
+
+*Contribution of this thesis (Sibren Wieme, 2026).*
 
 `instrument.rs` provides a RAII `CallTrace` guard that, on drop, logs the wall-clock duration of the host method and (on Linux) voluntary/non-voluntary context switch deltas from `/proc/self/status`.
 
