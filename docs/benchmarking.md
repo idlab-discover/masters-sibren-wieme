@@ -97,40 +97,11 @@ cargo build --release --bins --target wasm32-wasip2 \
 
 ## Running
 
-### Pre-flight: recovering a stuck SanDisk (Linux)
+### Pre-flight: recovering a stuck SanDisk
 
-If a previous run was interrupted mid-transfer (Ctrl-C, panic, timeout), the SanDisk's internal Bulk-Only Transport state machine can stay stuck. Symptom: every CBW returns `r=-1` or `r=-7`, every iteration aborts at 0 MB/s, and the harness keeps retrying without progress. The harness's prep step handles unmount and `usb-storage` unbind, but it cannot recover from a stuck BBB state — that lives inside the drive's own firmware.
+The bulk binaries do a BOT Reset followed by `clear_halt` on both bulk endpoints at startup, which is enough to recover from most stuck states (a previous run interrupted mid-transfer, an aborted Ctrl-C, etc.). The harness's prep step also unmounts the drive and unbinds `usb-storage` before each bulk run.
 
-The host-side soft reset is **not enough** for a stuck SanDisk:
-
-```bash
-# Soft port reset — this only re-enumerates from the host side.
-# The drive keeps power through its internal caps, so the firmware
-# state is preserved. Worth trying once, but don't expect it to
-# unstick a fully wedged BBB state machine.
-echo '4-2' | sudo tee /sys/bus/usb/drivers/usb/unbind
-sleep 1
-echo '4-2' | sudo tee /sys/bus/usb/drivers/usb/bind
-sleep 2
-```
-
-If the soft reset doesn't restore throughput (CBWs still fail with `r=-1`), there's only one reliable path:
-
-```bash
-# Physical unplug, wait 15 seconds, plug back in.
-# The 15s isn't superstition — internal caps on USB sticks keep the
-# firmware powered during short unplugs. A full discharge is what
-# actually resets the BBB state machine.
-```
-
-After plugging back in, the auto-mount usually fires. Unmount before the bench:
-
-```bash
-sudo umount /media/$USER/Untitled 2>/dev/null   # adjust mount path
-just bench-smoke --workloads bulk
-```
-
-A non-fatal `TEST UNIT READY failed` warning followed by valid throughput numbers is expected — the drive sometimes needs one CBW to wake up. Sustained `r=-1` across all five conditions means it's still stuck and needs another physical unplug.
+If you still see sustained `CBW write failed: r=-1` across all five conditions, the drive's internal firmware is wedged at a level that no host-side reset can fix. The only reliable recovery is a physical unplug, **wait 15 seconds**, and plug back in. The 15 seconds isn't superstition — internal caps on USB sticks keep the firmware powered during short unplugs, so a quick yank-and-replug doesn't actually power-cycle anything.
 
 ### Quick sanity check
 
