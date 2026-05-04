@@ -51,7 +51,7 @@ HOST="${REPO_ROOT}/usb-wasi-host/target/release/usb-wasi-host"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SMOKE=0
-WARMUP=10
+WARMUP=100
 WORKLOADS="bulk,ctrl,int"
 CONDITIONS="C1,C2,C3,C4,C5"
 OUT_DIR=""
@@ -79,10 +79,10 @@ done
 # Default iterations
 default_iter() {  # $1 = workload
     case "$1" in
-        bulk) echo 100  ;;
-        ctrl) echo 1000 ;;
-        int)  echo 1000 ;;
-        *)    echo 100  ;;
+        bulk) echo 500   ;;   # 500 × 64 KiB = 32 MiB per cell
+        ctrl) echo 10000 ;;   # tight RTT distribution incl. p99
+        int)  echo 10000 ;;   # jitter analysis needs distribution tails
+        *)    echo 100   ;;
     esac
 }
 
