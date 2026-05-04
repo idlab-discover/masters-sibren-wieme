@@ -105,7 +105,6 @@ mod wasm {
     use anyhow::{anyhow, Result};
 
     // WIT types from the central bindings module (one generate! per binary).
-    use usb_bench_rs::bindings::component::usb::configuration::ConfigValue;
     use usb_bench_rs::bindings::component::usb::device::{list_devices, DeviceHandle};
     use usb_bench_rs::bindings::component::usb::transfers::{
         await_transfer, TransferOptions, TransferSetup, TransferType,
@@ -129,14 +128,11 @@ mod wasm {
                 .find(|(_, d, _)| d.vendor_id == vid && d.product_id == pid)
                 .ok_or_else(|| anyhow!("device {:04x}:{:04x} not found", vid, pid))?;
             let handle = dev.open().map_err(|e| anyhow!("open: {:?}", e))?;
-            // Detach kernel HID driver before set_configuration; otherwise the
-            // host returns LIBUSB_ERROR_BUSY because hid-playstation holds iface 3.
-            if handle.kernel_driver_active(IFACE).unwrap_or(false) {
-                let _ = handle.detach_kernel_driver(IFACE);
-            }
-            handle
-                .set_configuration(ConfigValue::Value(1))
-                .map_err(|e| anyhow!("set_configuration: {:?}", e))?;
+            // Detach kernel HID driver (hid-playstation) if active.
+            // Always attempt detach; ignore errors (e.g. already detached).
+            // Do NOT call set_configuration: the device is already at config 1,
+            // and libusb returns BUSY if any kernel driver still holds an interface.
+            let _ = handle.detach_kernel_driver(IFACE);
             handle
                 .claim_interface(IFACE)
                 .map_err(|e| anyhow!("claim_interface: {:?}", e))?;
