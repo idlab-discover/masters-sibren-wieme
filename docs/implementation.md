@@ -341,7 +341,7 @@ wasm-tools print benchmarks/usb-bench-rs/target-wasi-rusb/wasm32-wasip2/release/
     | grep "import .*component:usb"
 ```
 
-The key points for the defense: rusb and libusb1-sys are unmodified crates.io downloads; the whole adaptation is one `.pc` file and an env-var; C3 and C4 compile the same Rust source, so any difference in results comes purely from the WASI layer.
+Key properties of this approach: `rusb` and `libusb1-sys` are unmodified crates.io downloads; the whole adaptation is one `.pc` file and an env-var; C3 and C4 compile the same Rust source, so any difference in results comes purely from the WASI layer.
 
 ---
 

@@ -1,11 +1,8 @@
 # Thesis — context, scope and chapter mapping
 
-This document links the codebase to the master's thesis manuscript.
-It's meant as a reference for three groups:
-
-1. Readers of the repo who want to know which thesis chapter discusses a piece of code.
-2. The defense committee who want to map claims in the manuscript to evidence in the source tree.
-3. Me, for writing the remaining chapters and keeping track of which docs cover which arguments.
+This document links the codebase to the master's thesis manuscript: which
+chapter discusses which piece of code, and which docs in this repo support
+which arguments in the manuscript.
 
 The thesis manuscript itself lives under `Masterproef_Sibren_Overleaf/`
 (gitignored, kept in sync with Overleaf).
@@ -22,23 +19,19 @@ Cyber-Physical IoT**
 Sibren Wieme - Master of Science in Computer Science Engineering,
 Faculty of Engineering and Architecture, Ghent University, 2025-2026.
 
-### Promotors and counsellors
+### Promotors and supervisors
 - **Promotors**: Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
-- **Counsellors**: ing. Michiel Vankenhove, Friedrich Vandenberghe
+- **Supervisors**: ing. Michiel Vankenhove, Friedrich Vandenberghe
 
 ### Position in the WASI-USB programme
-This thesis is the fourth in a sequence of master's theses on USB-over-WASI
-at IDLab Discover:
+This work continues a sequence of master's theses on USB-over-WASI at IDLab
+Discover:
 
 | # | Author | Year | Contribution |
 |---|--------|------|--------------|
-| 1 | Wouter Hennen | 2024 | Initial WIT-based host runtime; control + bulk transfers |
-| 2 | Friedrich Vandenberghe | 2024 | WASI-I²C (parallel hardware bus) |
-| 3 | Robbe Leroy | 2025 | `libusb-wasi.a` - WASI backend inside libusb |
-| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1-C5 benchmark evaluation** |
-
-The framework also draws on the broader cyber-physical WebAssembly research
-of Van Kenhove et al.
+| 1+2 | Wouter Hennen + Warre Dujardin | 2024 | Initial WIT-based host runtime; control + bulk transfers |
+| 3 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
+| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
 
 ---
 
@@ -92,22 +85,6 @@ Per chapter, these are the docs to look at:
 | 8 | Discussion | [`architecture.md`](./architecture.md) §3.3 (limitations), [`implementation.md`](./implementation.md) §2 (rejected alternatives) |
 | 9 | Conclusion and Future Work | This file (§3) |
 | 10 | Societal Reflection | (manuscript only) |
-
-### 4.1 Defense talking-point cheat sheet
-
-| If asked … | Refer to |
-|------------|----------|
-| "Why a flat buffer for ISO?" | [`implementation.md`](./implementation.md) §2 - rejected alternatives |
-| "Why a trait for the backend?" | [`implementation.md`](./implementation.md) §1 - design rationale |
-| "How does rusb-wasi work without forking rusb?" | [`implementation.md`](./implementation.md) §6 - pkg-config pipeline |
-| "What does the host actually do for UVC?" | [`implementation.md`](./implementation.md) §7 - "host has zero UVC code" |
-| "How is WASI-USB stronger than `--device=/dev/bus/usb`?" | [`architecture.md`](./architecture.md) §3.2 - comparison table |
-| "What broke and how was it fixed?" | [`implementation.md`](./implementation.md) §3 - three bug fixes with root causes |
-| "How do you measure WASI overhead?" | [`implementation.md`](./implementation.md) §5 - `instrument.rs`; [`benchmarking.md`](./benchmarking.md) - methodology |
-| "What does C1-C5 isolate?" | [`implementation.md`](./implementation.md) §8, [`benchmarking.md`](./benchmarking.md) |
-| "Why a libusb event thread + tokio oneshot?" | [`architecture.md`](./architecture.md) §5 - three concurrent domains |
-
----
 
 ## 5. Thesis chapter outline (full structure)
 
@@ -221,9 +198,9 @@ plantuml -tpdf diagrams/*.puml
 
 **Promotors:** Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
 
-**Begeleiders:** ing. Michiel Vankenhove, Friedrich Vandenberghe
+**Supervisors:** ing. Michiel Vankenhove, Friedrich Vandenberghe
 
-**Voorgangers** (the thesis students who built what this work extends):
+**Predecessors** (the thesis students who built what this work extends):
 Wouter Hennen, Warre Dujardin, Robbe Leroy
 
 This work is partially supported by the **ELASTIC project**, funded by the
