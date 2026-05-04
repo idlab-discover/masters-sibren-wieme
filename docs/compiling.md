@@ -366,7 +366,7 @@ via `benchmarks/usb-bench-rs/build.rs`.
 - **`libusb-wasi.a not found`**: Build it from `libusb-wasi/` as described in §6.1.
 - **`guest_component_type.o not found`**: Run the C2 cmake step first (`cmake --build benchmarks/usb-bench-c/build-wasi`).
 - **`error: could not find Cargo.toml`**: Make sure you are running cargo from the right crate root.
-- **`SCSI Command Failed`**: The USB drive is still mounted. Eject/unmount it before running the mass-storage or bulk benchmarks. On Linux, `run.sh` attempts to unmount automatically; on macOS it uses `diskutil unmount`.
+- **`SCSI Command Failed`**: The USB drive is still mounted. Eject/unmount it before running the mass-storage or bulk benchmarks. On Linux, `run.sh` attempts to unmount automatically and unbind the `usb-storage` driver; on macOS it uses `diskutil unmount`.
 - **`Invalid data length for control transfer OUT`**: This was a bug in `libusb-wasi/libusb/os/wasi_usb.c` (line 973, `if (true)` stub). Fixed in submodule commit `e38f249`.
 - **`duplicate symbol: exports_wasi_cli_run_run`**: The WASI SDK libc already provides this bridge via `__main_void.o`. The C2 benchmark builds include a `wasm_reactor.c` with `__attribute__((weak))` so the strong libc symbol wins on WASI SDK ≥ 25 and the weak fallback is used on older SDKs.
 - **Cargo doesn't rebuild after `.a` file changes**: Cargo doesn't watch external static libraries. Force a rebuild: `touch benchmarks/usb-bench-rs/build.rs`.

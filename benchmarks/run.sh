@@ -339,27 +339,33 @@ main() {
                     echo "  [prep] Could not find disk node for ${vidpid} — bulk may fail if mounted"
                 fi
             elif [[ "$(uname -s)" == "Linux" ]]; then
-                # Find the /sys path for this USB device by VID/PID, then
-                # derive its block device name (sdX) via the 'block' subsystem link.
-                local sysdev
-                sysdev=$(find /sys/bus/usb/devices -maxdepth 2 -name idVendor 2>/dev/null \
-                    | while read -r f; do
-                        dir="$(dirname "$f")"
-                        v="$(cat "$f" 2>/dev/null)"
-                        p="$(cat "${dir}/idProduct" 2>/dev/null)"
-                        if [[ "${v}" == "${vid}" && "${p}" == "${pid}" ]]; then
-                            echo "${dir}"
-                            break
-                        fi
-                    done | head -1)
+                # Find the /sys path for this USB device by VID/PID. Use a glob
+                # loop instead of `find` because /sys/bus/usb/devices/* are
+                # symlinks and `find` does not follow them by default — that's
+                # why the previous `find -maxdepth 2` returned nothing on real
+                # Linux machines.
+                local sysdev=""
+                for f in /sys/bus/usb/devices/*/idVendor; do
+                    [[ -e "$f" ]] || continue
+                    local v p dir
+                    dir="$(dirname "$f")"
+                    v="$(cat "$f" 2>/dev/null)"
+                    p="$(cat "${dir}/idProduct" 2>/dev/null)"
+                    if [[ "${v}" == "${vid}" && "${p}" == "${pid}" ]]; then
+                        sysdev="${dir}"
+                        break
+                    fi
+                done
                 if [[ -n "${sysdev}" ]]; then
+                    local port
+                    port="$(basename "${sysdev}")"
+                    echo "  [prep] Found USB device ${vidpid} at ${sysdev} (port ${port})"
                     # Walk descendant dirs for block/* entries
                     local blockdev
                     blockdev=$(find "${sysdev}" -name "uevent" 2>/dev/null \
                         | xargs grep -l "^DEVTYPE=disk" 2>/dev/null \
                         | head -1 | xargs -I{} dirname {} | xargs -I{} basename {})
                     if [[ -n "${blockdev}" ]]; then
-                        echo "  [prep] Found USB block device /dev/${blockdev} for ${vidpid}"
                         # Unmount all mounted partitions of this device
                         local mounted
                         mounted=$(lsblk -lno NAME,MOUNTPOINT "/dev/${blockdev}" 2>/dev/null \
@@ -374,8 +380,19 @@ main() {
                         else
                             echo "  [prep] /dev/${blockdev} has no mounted partitions — OK"
                         fi
-                    else
-                        echo "  [prep] Could not find block device for ${vidpid} — bulk may fail if mounted"
+                    fi
+                    # Unbind usb-storage from every interface of this device.
+                    # libusb_set_auto_detach_kernel_driver() works on Linux but
+                    # races with udev re-probing; an explicit unbind right
+                    # before the benchmark fires is more reliable.
+                    local iface unbind_path="/sys/bus/usb/drivers/usb-storage/unbind"
+                    if [[ -w "${unbind_path}" || $(id -u) -eq 0 ]]; then
+                        for iface in /sys/bus/usb/drivers/usb-storage/${port}:*; do
+                            [[ -e "$iface" ]] || continue
+                            echo "  [prep] Unbinding usb-storage from $(basename "$iface")"
+                            echo "$(basename "$iface")" | ${SUDO} tee "${unbind_path}" >/dev/null 2>&1 \
+                                || echo "  [prep] unbind failed (already unbound?)"
+                        done
                     fi
                 else
                     echo "  [prep] USB device ${vidpid} not found in /sys — bulk may fail if mounted"
