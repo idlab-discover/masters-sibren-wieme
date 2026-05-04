@@ -1,8 +1,9 @@
 # WASI-USB
 
-Master's thesis implementation by Sibren Wieme (IDLab Discover, Ghent University, 2025–2026).
+Master's thesis implementation by Sibren Wieme (Ghent University, AJ 2025–2026).
 
-**Title:** *Secure USB Access in WebAssembly: A Capability-Based Framework for Cyber-Physical IoT*
+**English Title:** *Secure USB Access in WebAssembly: A Capability-Based Framework for Cyber-Physical IoT*
+**Dutch Title:** *Veilige USB-toegang in WebAssembly: Een capability-gebaseerd raamwerk voor cyber-fysieke IoT-toepassingen*
 
 The idea is simple: run a WebAssembly component that talks to a USB device, without giving it access to the whole OS. The host runtime exposes only the primitives the guest explicitly needs; everything else is invisible. This repo contains the host runtime, guest examples, WIT interface, benchmark suite (C1–C5) and the supporting docs.
 
@@ -16,18 +17,17 @@ WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAsse
 
 | # | Author | Year | What they built |
 |---|--------|------|-----------------|
-| 1 | Wouter Hennen + Warre Dujardin | 2024 | Initial WIT-based host runtime; control + bulk transfers |
-| 2 | Friedrich Vandenberghe | 2024 | WASI-I²C (parallel hardware bus interface) |
+| 1+2 | Wouter Hennen + Warre Dujardin | 2024 | Initial WIT-based host runtime; control + bulk transfers |
 | 3 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
 | **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC workload; C1–C5 benchmarks** |
 
-WASI-USB champion: Merlijn Sebrechts. Other contributors: Michiel Van Kenhove, Friedrich Vandenberghe.
+WASI-USB champion: Merlijn Sebrechts.
 
 ### Platform support
 
 Developed and tested mainly on Linux (amd64) and macOS (arm64). Windows was not tested; if you want to try, WSL 2 is the path of least resistance.
 
-> **Bulk transfers on macOS**: the `IOUSBMassStorageClass` kernel extension stays attached even after unmounting, so `libusb_set_auto_detach_kernel_driver()` is a no-op there. The bulk benchmark conditions (C1–C5) should be run on Linux. Control and interrupt transfers work fine on both platforms.
+> **Bulk transfers on macOS**: the `IOUSBMassStorageClass` kernel extension stays attached even after unmounting, so `libusb_set_auto_detach_kernel_driver()` is a no-op there. The bulk benchmark conditions (C1–C5) should be run on Linux. Control and interrupt transfers work fine on both platforms. All demos should work on both platforms.
 
 ---
 
@@ -158,24 +158,13 @@ plantuml -tpdf diagrams/*.puml   # for LaTeX
 
 ---
 
-## WIT design notes
-
-A few things that aren't obvious from reading the WIT files:
-
-- `flags event { arrived; left; }` is a bitflag, not an enum. Check `Event::ARRIVED` / `Event::LEFT`.
-- `await-transfer` takes a `borrow<transfer>`, not an owned resource. The host must not delete the borrow slot — see [implementation.md §3.1](docs/implementation.md#31-the-borrow-bug) for what goes wrong if it does.
-- Isochronous results use a flat buffer + sidecar metadata: `data: list<u8>` is contiguous packets at fixed stride, `packets: list<iso-packet>` carries per-packet `actual_length` and `status`. One memcpy per transfer through the ABI.
-- `enable-hotplug` has no pollable; the guest calls `poll-events` to drain the queue.
-
----
-
 ## Acknowledgements
 
 **Promotors:** Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
 
-**Begeleiders:** ing. Michiel Vankenhove, Friedrich Vandenberghe
+**Supervisors:** ing. Michiel Vankenhove, Friedrich Vandenberghe
 
-**Voorgangers** (the thesis students who built what this work extends):
+**Predecessors** (the thesis students who built what this work extends):
 Wouter Hennen, Warre Dujardin, Robbe Leroy
 
 ---
