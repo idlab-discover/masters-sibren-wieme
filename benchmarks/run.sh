@@ -362,9 +362,12 @@ main() {
                     echo "  [prep] Found USB device ${vidpid} at ${sysdev} (port ${port})"
                     # Walk descendant dirs for block/* entries
                     local blockdev
+                    # grep returns 1 (no match) when usb-storage is already unbound;
+                    # || true prevents set -e from aborting the script in that case.
                     blockdev=$(find "${sysdev}" -name "uevent" 2>/dev/null \
                         | xargs grep -l "^DEVTYPE=disk" 2>/dev/null \
-                        | head -1 | xargs -I{} dirname {} | xargs -I{} basename {})
+                        | head -1 | xargs -I{} dirname {} | xargs -I{} basename {} 2>/dev/null \
+                        || true)
                     if [[ -n "${blockdev}" ]]; then
                         # Unmount all mounted partitions of this device
                         local mounted
