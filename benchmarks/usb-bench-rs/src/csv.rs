@@ -189,7 +189,10 @@ fn rusage_impl() -> Rusage {
     }
     let user_us = (r.ru_utime.tv_sec as u64) * 1_000_000 + (r.ru_utime.tv_usec as u64);
     let sys_us = (r.ru_stime.tv_sec as u64) * 1_000_000 + (r.ru_stime.tv_usec as u64);
-    // On Linux ru_maxrss is in KiB; on macOS it is in bytes. We assume Linux.
+    // On Linux ru_maxrss is in KiB; on macOS it is in bytes.
+    #[cfg(target_os = "macos")]
+    let rss_peak_kb = r.ru_maxrss as u64 / 1024;
+    #[cfg(not(target_os = "macos"))]
     let rss_peak_kb = r.ru_maxrss as u64;
     Rusage {
         user_us,
