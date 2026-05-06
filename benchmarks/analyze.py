@@ -12,7 +12,7 @@ Arguments:
     --format FMT   Figure format: png (default) or pdf
 
 Output:
-    1. Correctness table — per workload: are W-bulk and W-iso checksums
+    1. Correctness table — per workload: are W-bulk checksums
        consistent across conditions?
     2. Throughput bar chart — MB/s per condition × workload
     3. RTT violin plot — RTT distribution per condition (ctrl, int)
@@ -48,21 +48,22 @@ CONDITION_LABELS = {
     "native-libusb": "C1\nnative-libusb",
     "wasi-libusb":   "C2\nwasi-libusb",
     "native-rusb":   "C3\nnative-rusb",
+    "wasi-rusb":     "C4\nwasi-rusb",
     "wasi-raw-wit":  "C5\nwasi-raw-wit",
 }
 CONDITION_COLORS = {
     "native-libusb": "#2196F3",   # blue
     "wasi-libusb":   "#64B5F6",   # light blue
     "native-rusb":   "#43A047",   # green
+    "wasi-rusb":     "#81C784",   # mid green
     "wasi-raw-wit":  "#A5D6A7",   # light green
 }
 
-WORKLOAD_ORDER = ["bulk", "ctrl", "int", "iso"]
+WORKLOAD_ORDER = ["bulk", "ctrl", "int"]
 WORKLOAD_LABELS = {
     "bulk": "W-bulk\n(SCSI READ)",
     "ctrl": "W-ctrl\n(Control)",
     "int":  "W-int\n(Interrupt)",
-    "iso":  "W-iso\n(Isochronous)",
 }
 
 sns.set_theme(style="whitegrid", font_scale=1.1)
@@ -168,7 +169,7 @@ def summary_stats(series: pd.Series) -> dict:
 def check_correctness(df: pd.DataFrame) -> bool:
     print("\n━━━ 1. Correctness (checksum consistency) ━━━━━━━━━━━━━━━━━━━━━━━━━━")
     ok = True
-    for wl in ["bulk", "iso"]:
+    for wl in ["bulk"]:
         sub = df[(df["workload"] == wl) & df["checksum_hex"].notna() &
                  (df["checksum_hex"] != "")]
         if sub.empty:
@@ -192,10 +193,10 @@ def check_correctness(df: pd.DataFrame) -> bool:
 # ── 2. Throughput bar chart ───────────────────────────────────────────────────
 
 def plot_throughput(df: pd.DataFrame, out_dir: Path, fmt: str):
-    tput_wl = ["bulk", "iso"]
+    tput_wl = ["bulk"]
     sub = df[df["workload"].isin(tput_wl)].copy()
     if sub.empty:
-        print("  [skip] throughput: no bulk/iso data")
+        print("  [skip] throughput: no bulk data")
         return
 
     agg = (sub.groupby(["workload", "condition"], observed=True)["mb_s"]
@@ -335,8 +336,54 @@ def print_startup(df: pd.DataFrame):
 
 # ── 6. Memory bar chart ───────────────────────────────────────────────────────
 
-def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str):
-    # Use last iteration RSS (peak) and guest_mem_bytes
+# Short condition codes used in resources_<cond>_<wl>.csv filenames.
+_COND_SHORT = {
+    "C1": "native-libusb",
+    "C2": "wasi-libusb",
+    "C3": "native-rusb",
+    "C4": "wasi-rusb",
+    "C5": "wasi-raw-wit",
+}
+
+
+def load_external_rss(results_dir: Path) -> dict:
+    """Return peak RSS (MiB) per (condition, workload) from resources_*.csv.
+
+    run.sh writes resources_<Cx>_<wl>.csv using ps -o rss=, which reports KiB
+    on both Linux and macOS.  Values are converted to MiB here.  Returns an
+    empty dict when no resource files exist (e.g. older result sets).
+    """
+    peaks: dict = {}
+    for path in sorted(results_dir.glob("resources_C[0-9]_*.csv")):
+        stem = path.stem[len("resources_"):]   # "C2_ctrl"
+        parts = stem.split("_", 1)
+        if len(parts) != 2:
+            continue
+        short, wl = parts
+        cond = _COND_SHORT.get(short)
+        if cond is None:
+            continue
+        try:
+            rdf = pd.read_csv(path)
+            if "rss_kb" in rdf.columns and not rdf.empty:
+                peaks[(cond, wl)] = float(rdf["rss_kb"].max()) / 1024.0
+        except Exception:
+            pass
+    return peaks
+
+
+def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str,
+                results_dir: Path | None = None):
+    """Bar chart of peak RSS per condition, using external poller data when
+    available (resources_*.csv from run.sh) and falling back to the in-process
+    rss_peak_kb column otherwise.
+
+    ps -o rss= is used for the external measurement, which reports KiB on both
+    Linux and macOS.  getrusage inside a Wasm guest always returns zero, so
+    the external poller is the only reliable source for WASI conditions.
+    """
+    ext_rss = load_external_rss(results_dir) if results_dir is not None else {}
+
     last = (df.sort_values("iteration")
               .groupby(["workload", "condition"], observed=True)
               .last()
@@ -356,9 +403,16 @@ def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str):
         wl_data = last[last["workload"] == wl].sort_values("condition")
         conds   = wl_data["condition"].tolist()
         x       = np.arange(len(conds))
-        rss     = wl_data["rss_peak_kb"].values / 1024.0   # → MiB
+
+        # Prefer external RSS (correct on macOS and for WASI); fall back to
+        # in-process measurement for any condition not covered by the poller.
+        rss = np.array([
+            ext_rss.get((c, wl), wl_data.loc[wl_data["condition"] == c, "rss_peak_kb"].iloc[0] / 1024.0)
+            for c in conds
+        ])
+
         # Guest linear memory (only meaningful for WASI conditions)
-        guest   = np.where(
+        guest = np.where(
             wl_data["guest_mem_bytes"].notna() & (wl_data["guest_mem_bytes"] > 0),
             wl_data["guest_mem_bytes"].fillna(0).values / (1024 * 1024),
             0.0,
@@ -375,8 +429,9 @@ def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str):
         if ax == axes[0]:
             ax.legend(fontsize=8)
 
-    fig.suptitle("Memory usage (RSS peak + guest linear memory)", fontsize=13,
-                 y=1.01)
+    src = "external poller" if ext_rss else "in-process getrusage"
+    fig.suptitle(f"Memory usage — RSS peak + guest linear memory ({src})",
+                 fontsize=12, y=1.01)
     fig.tight_layout()
     _save(fig, out_dir / f"memory.{fmt}")
     print(f"  [plot] memory → memory.{fmt}")
@@ -416,6 +471,152 @@ def plot_wrapper_overhead(df: pd.DataFrame, out_dir: Path, fmt: str):
     fig.tight_layout()
     _save(fig, out_dir / f"wrapper_overhead.{fmt}")
     print(f"  [plot] wrapper overhead → wrapper_overhead.{fmt}")
+
+
+# ── 7b. Single-comparison overhead figures ───────────────────────────────────
+#
+# Each figure shows exactly one A-vs-B comparison, with the three workloads
+# side-by-side as subplots. Absolute median RTT is drawn as bars with values
+# on top; the relative %-delta is annotated as a Δ-box. This makes each
+# figure self-contained: you can read the µs scale and the percentage at the
+# same time, without any cross-figure mental arithmetic.
+
+def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
+              cond_a: str, cond_b: str,
+              title: str, fname: str,
+              workloads=("ctrl", "int", "bulk")):
+    """One A-vs-B comparison with three workload subplots side by side."""
+    fig, axes = plt.subplots(1, len(workloads), figsize=(4 * len(workloads), 4.8))
+    if len(workloads) == 1:
+        axes = [axes]
+
+    for ax, wl in zip(axes, workloads):
+        sub = df[df["workload"] == wl]
+        a = sub[sub["condition"] == cond_a]["rtt_us"].dropna()
+        b = sub[sub["condition"] == cond_b]["rtt_us"].dropna()
+        if a.empty or b.empty:
+            ax.set_title(f"{wl} — no data")
+            ax.axis("off")
+            continue
+
+        med_a = a.median()
+        med_b = b.median()
+        # Use IQR/2 as a robust spread indicator (more honest than std for
+        # heavy-tailed RTT distributions).
+        spread_a = (a.quantile(0.75) - a.quantile(0.25)) / 2
+        spread_b = (b.quantile(0.75) - b.quantile(0.25)) / 2
+        delta_pct = ((med_b - med_a) / med_a) * 100 if med_a else 0.0
+
+        x = np.array([0, 1])
+        bars = ax.bar(x, [med_a, med_b],
+                      yerr=[spread_a, spread_b],
+                      color=[CONDITION_COLORS.get(cond_a, "#888"),
+                             CONDITION_COLORS.get(cond_b, "#888")],
+                      edgecolor="white", linewidth=0.5,
+                      capsize=5, error_kw=dict(elinewidth=1, ecolor="grey"),
+                      width=0.55)
+        ax.set_xticks(x)
+        ax.set_xticklabels([CONDITION_LABELS.get(cond_a, cond_a),
+                            CONDITION_LABELS.get(cond_b, cond_b)],
+                           fontsize=9)
+        ax.set_ylabel("Median RTT (µs)")
+        ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
+
+        # Absolute value labels on the bars
+        for bar, val in zip(bars, [med_a, med_b]):
+            h = bar.get_height()
+            ax.annotate(f"{val:.1f} µs",
+                        (bar.get_x() + bar.get_width() / 2, h),
+                        ha="center", va="bottom",
+                        fontsize=10, fontweight="bold",
+                        xytext=(0, 3), textcoords="offset points")
+
+        # Headroom for delta box
+        ymax = max(med_a + spread_a, med_b + spread_b) * 1.35
+        ax.set_ylim(0, ymax)
+
+        # Percentage delta box
+        sign = "+" if delta_pct >= 0 else ""
+        delta_color = "#C62828" if delta_pct > 5 else \
+                      "#2E7D32" if delta_pct < -5 else "#616161"
+        ax.text(0.5, 0.92, f"Δ = {sign}{delta_pct:.1f}\\%",
+                transform=ax.transAxes, ha="center", va="top",
+                fontsize=12, fontweight="bold", color=delta_color,
+                bbox=dict(boxstyle="round,pad=0.35",
+                          facecolor="white",
+                          edgecolor=delta_color, linewidth=1.2))
+
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        ax.set_axisbelow(True)
+
+    fig.suptitle(title, fontsize=13, y=1.02)
+    fig.tight_layout()
+    _save(fig, out_dir / f"{fname}.{fmt}")
+    print(f"  [plot] {fname} → {fname}.{fmt}")
+
+
+def plot_all_pairs(df: pd.DataFrame, out_dir: Path, fmt: str):
+    """Three single-comparison figures answering Q1 (libusb), Q1 (rusb), Q2."""
+    plot_pair(df, out_dir, fmt,
+              "native-libusb", "wasi-libusb",
+              "Q1a — WASI overhead on the libusb path (C1 vs C2)",
+              "q1_libusb_overhead")
+    plot_pair(df, out_dir, fmt,
+              "native-rusb", "wasi-rusb",
+              "Q1b — WASI overhead on the rusb path (C3 vs C4)",
+              "q1_rusb_overhead")
+    plot_pair(df, out_dir, fmt,
+              "wasi-libusb", "wasi-rusb",
+              "Q2 — libusb vs rusb inside the sandbox (C2 vs C4)",
+              "q2_backend_in_sandbox")
+
+
+# ── 7c. LaTeX summary table export ────────────────────────────────────────────
+
+def export_summary_latex(df: pd.DataFrame, out_dir: Path):
+    """Write a LaTeX-ready summary table of RTT statistics per workload × condition."""
+    rows = []
+    for wl in WORKLOAD_ORDER:
+        sub = df[df["workload"] == wl]
+        if sub.empty:
+            continue
+        for cond in CONDITION_ORDER:
+            s = sub[sub["condition"] == cond]["rtt_us"].dropna()
+            if s.empty:
+                continue
+            rows.append({
+                "workload":  wl,
+                "condition": cond,
+                "n":         len(s),
+                "median":    s.median(),
+                "mean":      s.mean(),
+                "p95":       s.quantile(0.95),
+                "p99":       s.quantile(0.99),
+                "max":       s.max(),
+            })
+    if not rows:
+        print("  [skip] LaTeX table: no data")
+        return
+
+    out = out_dir / "summary_table.tex"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w") as f:
+        f.write("% Auto-generated by analyze.py — do not edit by hand.\n")
+        f.write("% RTT in microseconds, sorted by workload and condition.\n")
+        f.write("\\begin{tabular}{llrrrrrr}\n")
+        f.write("\\toprule\n")
+        f.write("Workload & Condition & $n$ & median & mean & p95 & p99 & max \\\\\n")
+        f.write("\\midrule\n")
+        prev_wl = None
+        for r in rows:
+            wl_cell = r["workload"] if r["workload"] != prev_wl else ""
+            prev_wl = r["workload"]
+            f.write(f"{wl_cell} & {r['condition']} & {r['n']:d} & "
+                    f"{r['median']:.1f} & {r['mean']:.1f} & "
+                    f"{r['p95']:.1f} & {r['p99']:.1f} & {r['max']:.1f} \\\\\n")
+        f.write("\\bottomrule\n")
+        f.write("\\end{tabular}\n")
+    print(f"  [latex] summary table → {out.name}")
 
 
 # ── 8. Statistical tests ──────────────────────────────────────────────────────
@@ -544,10 +745,16 @@ def main():
     plot_cpu(df, plots_dir, args.fmt)
 
     # 6. Memory
-    plot_memory(df, plots_dir, args.fmt)
+    plot_memory(df, plots_dir, args.fmt, results_dir=results_dir)
 
     # 7. Wrapper overhead
     plot_wrapper_overhead(df, plots_dir, args.fmt)
+
+    # 7b. Single-comparison overhead figures (Q1a, Q1b, Q2)
+    plot_all_pairs(df, plots_dir, args.fmt)
+
+    # 7c. LaTeX summary table
+    export_summary_latex(df, plots_dir)
 
     print(f"\n✓ Done — figures in {plots_dir}")
 
