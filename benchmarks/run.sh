@@ -10,7 +10,7 @@
 # Options:
 #   --smoke           1 iteration per cell (quick sanity check)
 #   --iter N          iterations per cell (overrides per-workload defaults)
-#   --warmup N        warm-up iterations before timed run (default: 10)
+#   --warmup N        warm-up iterations before timed run (default: 250)
 #   --workloads LIST  comma-separated subset, e.g. ctrl,int  (default: all)
 #   --conditions LIST comma-separated subset, e.g. C1,C3     (default: all)
 #   --out-dir DIR     override results directory
@@ -51,7 +51,7 @@ HOST="${REPO_ROOT}/usb-wasi-host/target/release/usb-wasi-host"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SMOKE=0
-WARMUP=100
+WARMUP=250
 WORKLOADS="bulk,ctrl,int"
 CONDITIONS="C1,C2,C3,C4,C5"
 OUT_DIR=""
@@ -152,16 +152,50 @@ rt_prefix() {
     esac
 }
 
+# ── resource tracking ─────────────────────────────────────────────────────────
+# Polls ps -o rss= every 200 ms for PID $1 and appends timestamp_ms,rss_kb to
+# $2.  ps reports KiB on both Linux and macOS, so no unit conversion is needed.
+# Returns the background poller PID via stdout.
+_TRACK_CSV=""   # set before run_cmd to enable tracking; cleared after
+
+start_resource_tracker() {
+    local pid="$1" csv="$2"
+    printf 'timestamp_ms,rss_kb\n' > "${csv}"
+    (
+        local t0
+        t0=$(python3 -c 'import time; print(int(time.time()*1000))')
+        while kill -0 "${pid}" 2>/dev/null; do
+            local rss t
+            rss=$(ps -o rss= -p "${pid}" 2>/dev/null | tr -d ' ')
+            t=$(python3 -c 'import time; print(int(time.time()*1000))')
+            [[ -n "${rss}" ]] && printf '%d,%s\n' "$((t - t0))" "${rss}" >> "${csv}"
+            sleep 0.2
+        done
+    ) &
+    echo $!
+}
+
 # ── run_cmd: print + optionally execute ───────────────────────────────────────
+# When _TRACK_CSV is set, runs the command in background and polls its RSS.
 # Returns the exit code of the command; never aborts the harness.
 run_cmd() {
     echo "    \$ $*"
     if [[ $DRY_RUN -eq 0 ]]; then
-        eval "$@" || {
-            local rc=$?
+        local rc=0
+        if [[ -n "${_TRACK_CSV:-}" ]]; then
+            eval "$@" &
+            local pid=$! tpid
+            tpid=$(start_resource_tracker "${pid}" "${_TRACK_CSV}")
+            wait "${pid}" 2>/dev/null; rc=$?
+            kill "${tpid}" 2>/dev/null || true
+            wait "${tpid}" 2>/dev/null || true
+        else
+            eval "$@"; rc=$?
+        fi
+        if [[ ${rc} -ne 0 ]]; then
             echo "  [WARN] command exited with status ${rc} — device may not be connected"
             return ${rc}
-        }
+        fi
     fi
 }
 
@@ -412,7 +446,9 @@ main() {
             echo "  [${cell}/${total}]  ${cond} × ${wl}  → $(basename "${out_csv}")"
 
             warm_cell "${cond}" "${wl}" || true
+            _TRACK_CSV="${OUT_DIR}/resources_${cond}_${wl}.csv"
             run_cell  "${cond}" "${wl}" "${out_csv}" "${iters}" || true
+            _TRACK_CSV=""
 
             # Cooldown: let USB stack settle between cells
             if [[ $DRY_RUN -eq 0 && $SMOKE -eq 0 ]]; then
