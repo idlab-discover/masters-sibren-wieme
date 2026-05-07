@@ -32,7 +32,14 @@ What the comparisons isolate:
 | ctrl | Control | WASI-USB Loopback (Pico firmware) | cafe:4002 | 1000x control transfers, RTT distribution |
 | int | Interrupt | PS5 DualSense or similar HID device | 054c:0ce6 | 1000x interrupt-IN poll, jitter |
 
-**Why no isochronous workload?** Iso transfers require an async event loop that a WASIp2 guest component can't run (no guest threads; `wasi-threads` is still unstabilised). The iso pipeline is validated qualitatively via the webcam demo (25-30 fps on a Logitech Brio). The `w_iso` source files are kept around for a future WASIp3 implementation. See Future Work §16.1.2 in the thesis for the full explanation.
+**Why no isochronous workload?**
+Control, bulk and interrupt all have synchronous libusb wrappers (`libusb_control_transfer`, `libusb_bulk_transfer`, `libusb_interrupt_transfer`): one call in, one result out. The libusb-wasi backend maps each of those directly to a single WIT round-trip on the host, so no event loop or second thread is needed in the guest — which is exactly why benchmarking them works cleanly.
+
+Isochronous is structurally different. libusb deliberately has no synchronous iso API because the USB host controller schedules multiple packets per transfer (typically 32), each on its own 125 µs microframe boundary, and reports per-packet `actual_length` and `status` separately. The only way to use iso correctly is to submit several transfers in-flight and pump `libusb_handle_events` in a loop to collect callbacks — that loop *must* keep running while new transfers are being submitted. On a native system you just spin a while-loop. On WASIp2 that's impossible: there are no guest threads (`wasi-threads` is still an unstabilised proposal), so there's no second execution context to pump the event loop.
+
+A host-side workaround exists in this codebase (originally built by Leroy): `usb-wasi-host` moves the event loop to a Tokio task on the host and exposes a single blocking `await-transfer` WIT call to the guest. That's enough to get the webcam demo working (25–30 fps on a Logitech Brio, see Evaluation §13.4 in the thesis), but it makes meaningful *benchmarking* impossible: all the interesting timing — submit latency, per-packet jitter, queueing efficiency — is buried behind the host-async boundary, and the guest only ever sees "the await took roughly one USB frame period". In practice the `w_iso` binaries either returned `LIBUSB_ERROR_INVALID_PARAM` on submit or hit the 5-second await timeout — neither of which reflects real iso overhead. Rather than extending Leroy's workaround further, the cleaner path is to wait for WASIp3, where `stream<u8>` primitives will let the guest consume isochronous data natively without needing guest threads at all. This is discussed in the Evaluation and Future Work chapters of the thesis.
+
+The `w_iso.c` and `w_iso.rs` source files are kept in the repository as a reference for that future WASIp3 implementation. See Future Work §16.1.2 in the thesis for the full story.
 
 ---
 
@@ -109,10 +116,20 @@ If you still see sustained `CBW write failed: r=-1` across all five conditions, 
 just bench-smoke       # 1 iteration per cell, all conditions and workloads
 ```
 
+### Why these iteration counts?
+
+The defaults — warmup=100, bulk=1500, ctrl=10000, int=10000 — aren't arbitrary. Leroy (2022) ran up to 1 million iterations for pure latency measurements, but that was a tight loopback on a local network; USB round-trips are two to three orders of magnitude slower. After a few exploratory runs I looked at how quickly the standard error of the mean (SEM) stabilised:
+
+- **ctrl and int (10 000 iterations):** Round-trip time converges to a stable SEM within the first few hundred iterations. 10 000 gives a comfortable margin, keeps a single condition under two minutes, and matches typical HCI latency benchmark practice. Going to 1 million would take ~4 hours per condition for no meaningful gain in precision.
+- **bulk (1 500 iterations):** Each iteration is a 512 KB SCSI READ(10) — 1 500 × 512 KB ≈ 750 MB of actual USB traffic per condition. The 512 KB size is deliberate: USB SuperSpeed bulk has a max packet size of 1 024 B and a typical burst depth of 16, giving 16 × 1 024 B = 16 KiB per physical transaction. 512 KB = 32 bursts, which amortises per-transfer latency well without blowing the guest's linear-memory budget. Throughput stabilises after roughly 200–300 iterations once the drive's internal cache effects average out. 1 500 gives several full cache-flush cycles while keeping the run under five minutes per condition.
+- **warmup (250 iterations):** The first ~50 iterations show elevated latency in every condition (JIT warmup for WASM, page-fault storms for native). For bulk specifically, the SanDisk's internal cache distorts throughput for roughly the first 200 iterations (250 × 512 KB ≈ 125 MB of warmup reads gets it to steady state). 250 covers both effects across all three workloads; the logged data starts only after warmup completes.
+
+All five conditions run sequentially with the same counts, so any remaining device-side variance (temperature, internal wear-levelling) affects all conditions equally.
+
 ### Full measurement run
 
 ```bash
-just bench-run         # default iterations per workload (bulk=1500, ctrl=10000, int=10000), warmup=100
+just bench-run         # default iterations per workload (bulk=1500, ctrl=10000, int=10000), warmup=250
 
 # Restrict to specific workloads or conditions
 just bench-run --workloads bulk,ctrl
