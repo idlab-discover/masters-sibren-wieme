@@ -477,9 +477,9 @@ def plot_wrapper_overhead(df: pd.DataFrame, out_dir: Path, fmt: str):
 #
 # Each figure shows exactly one A-vs-B comparison, with the three workloads
 # side-by-side as subplots. Absolute median RTT is drawn as bars with values
-# on top; the relative %-delta is annotated as a Δ-box. This makes each
-# figure self-contained: you can read the µs scale and the percentage at the
-# same time, without any cross-figure mental arithmetic.
+# on top and IQR/2 error bars. The relative %-delta is intentionally omitted:
+# it is misleading for W-ctrl because the native baseline benefits from macOS
+# IOKit descriptor caching, making any relative figure unrepresentative.
 
 def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
               cond_a: str, cond_b: str,
@@ -505,8 +505,6 @@ def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
         # heavy-tailed RTT distributions).
         spread_a = (a.quantile(0.75) - a.quantile(0.25)) / 2
         spread_b = (b.quantile(0.75) - b.quantile(0.25)) / 2
-        delta_pct = ((med_b - med_a) / med_a) * 100 if med_a else 0.0
-
         x = np.array([0, 1])
         bars = ax.bar(x, [med_a, med_b],
                       yerr=[spread_a, spread_b],
@@ -531,20 +529,8 @@ def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
                         fontsize=10, fontweight="bold",
                         xytext=(0, 3), textcoords="offset points")
 
-        # Headroom for delta box
-        ymax = max(med_a + spread_a, med_b + spread_b) * 1.35
+        ymax = max(med_a + spread_a, med_b + spread_b) * 1.2
         ax.set_ylim(0, ymax)
-
-        # Percentage delta box
-        sign = "+" if delta_pct >= 0 else ""
-        delta_color = "#C62828" if delta_pct > 5 else \
-                      "#2E7D32" if delta_pct < -5 else "#616161"
-        ax.text(0.5, 0.92, f"Δ = {sign}{delta_pct:.1f}\\%",
-                transform=ax.transAxes, ha="center", va="top",
-                fontsize=12, fontweight="bold", color=delta_color,
-                bbox=dict(boxstyle="round,pad=0.35",
-                          facecolor="white",
-                          edgecolor=delta_color, linewidth=1.2))
 
         ax.grid(axis="y", linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)

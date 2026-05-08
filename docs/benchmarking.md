@@ -6,7 +6,7 @@ Documentation for the five-condition benchmark suite used in the thesis evaluati
 
 ## The benchmark matrix
 
-The evaluation compares USB access across five conditions and three workloads, giving 15 measurement cells. The design is deliberately redundant — C1 and C3 are native baselines in two languages, C2 and C4 are the WASM equivalents, C5 is the lowest-overhead WASM path.
+The evaluation compares USB access across five conditions and three workloads, giving 15 measurement cells. The design is deliberately redundant: C1 and C3 are native baselines in two languages, C2 and C4 are the WASM equivalents, C5 is the lowest-overhead WASM path.
 
 ### Conditions
 
@@ -29,8 +29,8 @@ What the comparisons isolate:
 | ID | Transfer | Device | VID:PID | What it measures |
 |----|----------|--------|---------|-----------------|
 | bulk | Bulk | SanDisk 3.2Gen1 USB drive | 0781:5581 | 30x SCSI READ(10), 512 KB per transfer |
-| ctrl | Control | WASI-USB Loopback (Pico firmware) | cafe:4002 | 1000x control transfers, RTT distribution |
-| int | Interrupt | PS5 DualSense or similar HID device | 054c:0ce6 | 1000x interrupt-IN poll, jitter |
+| ctrl | Control | WASI-USB Loopback (Pico 2 firmware) | cafe:4002 | 10 000x control transfers, RTT distribution |
+| int | Interrupt | PS5 DualSense or similar HID device | 054c:0ce6 | 10 000x interrupt-IN poll, jitter |
 
 **Why no isochronous workload?**
 Control, bulk and interrupt all have synchronous libusb wrappers (`libusb_control_transfer`, `libusb_bulk_transfer`, `libusb_interrupt_transfer`): one call in, one result out. The libusb-wasi backend maps each of those directly to a single WIT round-trip on the host, so no event loop or second thread is needed in the guest — which is exactly why benchmarking them works cleanly.
@@ -50,10 +50,10 @@ You need all three devices for a full run. Individual workloads can be run separ
 | Device | Notes |
 |--------|-------|
 | SanDisk 3.2Gen1 (or similar USB 3.x drive) | Must not be mounted before the run; unmount and unbind usb-storage first |
-| WASI-USB Loopback (`cafe:4002`) | Raspberry Pi Pico running the USB identity firmware |
+| WASI-USB Loopback (`cafe:4002`) | Raspberry Pi Pico 2 (RP2350) running the USB identity firmware |
 | PS5 DualSense or DualShock 4 | Disconnect from wireless mode first |
 
-The bulk workload only works reliably on Linux because `IOUSBMassStorageClass` on macOS can't be detached without SIP changes. See the note in the main README.
+The bulk workload requires that no kernel driver holds the SanDisk. On macOS, `IOUSBMassStorageClass` stays attached after unmounting; run `sudo usbconfig -u ugen<N> detach_kernel_driver` or claim the interface manually before the run. See the note in the main README.
 
 ---
 
@@ -118,7 +118,7 @@ just bench-smoke       # 1 iteration per cell, all conditions and workloads
 
 ### Why these iteration counts?
 
-The defaults — warmup=100, bulk=1500, ctrl=10000, int=10000 — aren't arbitrary. Leroy (2022) ran up to 1 million iterations for pure latency measurements, but that was a tight loopback on a local network; USB round-trips are two to three orders of magnitude slower. After a few exploratory runs I looked at how quickly the standard error of the mean (SEM) stabilised:
+The defaults — warmup=250, bulk=1500, ctrl=10000, int=10000 — aren't arbitrary. Leroy (2022) ran up to 1 million iterations for pure latency measurements, but that was a tight loopback on a local network; USB round-trips are two to three orders of magnitude slower. After a few exploratory runs I looked at how quickly the standard error of the mean (SEM) stabilised:
 
 - **ctrl and int (10 000 iterations):** Round-trip time converges to a stable SEM within the first few hundred iterations. 10 000 gives a comfortable margin, keeps a single condition under two minutes, and matches typical HCI latency benchmark practice. Going to 1 million would take ~4 hours per condition for no meaningful gain in precision.
 - **bulk (1 500 iterations):** Each iteration is a 512 KB SCSI READ(10) — 1 500 × 512 KB ≈ 750 MB of actual USB traffic per condition. The 512 KB size is deliberate: USB SuperSpeed bulk has a max packet size of 1 024 B and a typical burst depth of 16, giving 16 × 1 024 B = 16 KiB per physical transaction. 512 KB = 32 bursts, which amortises per-transfer latency well without blowing the guest's linear-memory budget. Throughput stabilises after roughly 200–300 iterations once the drive's internal cache effects average out. 1 500 gives several full cache-flush cycles while keeping the run under five minutes per condition.
@@ -270,7 +270,7 @@ C3 and C4 compile the same source, only the build configuration differs.
 
 **`LIBUSB_ERROR_ACCESS` / Permission denied**: USB access requires root. Run with `sudo`.
 
-**SanDisk bulk failures on macOS**: `IOUSBMassStorageClass` stays attached after unmounting. Run bulk benchmarks on Linux.
+**SanDisk bulk failures on macOS**: `IOUSBMassStorageClass` stays attached after unmounting. Detach it with `sudo usbconfig -u ugen<N> detach_kernel_driver` before the run.
 
 **SanDisk bulk failures even on Linux**: The drive may be in a stuck BBB state from a previous failed transfer. Unplug for ~15 seconds to let it reset. The `run.sh` prep automatically unmounts and unbinds `usb-storage`, but it can't fix a stuck drive.
 

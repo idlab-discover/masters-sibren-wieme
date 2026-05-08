@@ -19,15 +19,15 @@ WASI-USB is a proposed [WebAssembly System Interface](https://github.com/WebAsse
 |---|--------|------|-----------------|
 | 1+2 | Wouter Hennen + Warre Dujardin | 2024 | Initial WIT-based host runtime; control + bulk transfers |
 | 3 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
-| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC workload; C1–C5 benchmarks** |
+| **4** | **Sibren Wieme** | **2026** | **Backend abstraction (`HostUsbBackend` trait); isochronous transfer path (qualitative); UVC webcam guest; C1–C5 benchmark suite** |
 
 WASI-USB champion: Merlijn Sebrechts.
 
 ### Platform support
 
-Developed and tested mainly on Linux (amd64) and macOS (arm64). Windows was not tested; if you want to try, WSL 2 is the path of least resistance.
+Developed and tested on macOS (arm64, Apple M3 Max). Windows was not tested; if you want to try, WSL 2 is the path of least resistance.
 
-> **Bulk transfers on macOS**: the `IOUSBMassStorageClass` kernel extension stays attached even after unmounting, so `libusb_set_auto_detach_kernel_driver()` is a no-op there. The bulk benchmark conditions (C1–C5) should be run on Linux. Control and interrupt transfers work fine on both platforms. All demos should work on both platforms.
+> **Bulk transfers on macOS**: the `IOUSBMassStorageClass` kernel extension stays attached even after unmounting, so `libusb_set_auto_detach_kernel_driver()` is a no-op there. Run `sudo usbconfig -u ugen<N> detach_kernel_driver` or use Linux if the drive cannot be claimed. Control and interrupt transfers work fine on macOS without any driver detach.
 
 ---
 
@@ -105,11 +105,10 @@ just webcam
 just lsusb                                      # detailed device listing
 just enumerate-devices-rust                     # compact device list
 just webcam                                     # UVC capture → out/latest.jpg
-just control                                    # control transfer to Arduino
+just control                                    # loopback control transfer to Pico 2
 just xbox                                       # Xbox One S controller reader
 just ping                                       # bulk OUT/IN echo
 just mass-storage tree                          # FAT32 directory tree
-just ps5-maze                                   # Pacman via PS5/Xbox controller
 just streams-test <vid> <pid> <iface> <out> <in>  # USB 3.0 bulk streams test
 just build-all                                  # build everything
 ```
@@ -128,7 +127,7 @@ Five conditions that isolate different overhead sources:
 | C4 | Rust | rusb compiled to WASM | rusb→WASM pipeline (no upstream forks) |
 | C5 | Rust | raw WIT bindings | minimal-wrapper WASM overhead |
 
-Three workloads: bulk (SanDisk USB drive), control (Raspberry Pi Pico), interrupt (HID device).
+Three workloads: bulk (SanDisk Ultra 3.2 Gen1), control (Raspberry Pi Pico 2 loopback), interrupt (Sony DualSense HID).
 
 ```bash
 just bench-build    # build all five conditions
