@@ -87,6 +87,7 @@ int main(int argc, char **argv)
 
     /* ── Benchmark loop ──────────────────────────────────────────────────── */
     uint8_t desc_buf[DEVICE_DESC_LEN];
+    uint64_t loop_start_ns = bench_now_ns();
 
     for (uint32_t iter = 0; iter < iterations; ++iter) {
         bench_rusage_t ru_before, ru_after;
@@ -133,6 +134,11 @@ int main(int argc, char **argv)
 #ifdef __wasm__
         row.has_guest_mem   = 1;
 #endif
+        /* Write total wall-clock loop time on the final iteration only. */
+        if (iter == iterations - 1) {
+            row.total_runtime_ns  = bench_now_ns() - loop_start_ns;
+            row.has_total_runtime = 1;
+        }
         bench_csv_write(csv, &row);
 
         if (iter % 100 == 0 || iter == iterations - 1) {

@@ -82,7 +82,7 @@ FILE *bench_csv_open(const char *path)
         fputs(
             "timestamp_iso,condition,workload,iteration,bytes,duration_ns,"
             "user_cpu_us,sys_cpu_us,rss_peak_kb,guest_mem_bytes,"
-            "checksum_hex,notes\n",
+            "checksum_hex,total_runtime_ns,notes\n",
             f);
         fflush(f);
     }
@@ -110,6 +110,10 @@ void bench_csv_write(FILE *f, const bench_row_t *row)
     }
     fputc(',', f);
     write_field(f, row->checksum_hex);     fputc(',', f);
+    if (row->has_total_runtime) {
+        fprintf(f, "%llu", (unsigned long long)row->total_runtime_ns);
+    }
+    fputc(',', f);
     write_field(f, row->notes);
     fputc('\n', f);
     fflush(f);

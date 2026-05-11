@@ -15,12 +15,16 @@ Output:
     1. Correctness table — per workload: are W-bulk checksums
        consistent across conditions?
     2. Throughput bar chart — MB/s per condition × workload
-    3. RTT violin plot — RTT distribution per condition (ctrl, int)
-    4. CPU stacked bar — user+sys CPU time per condition
-    5. Startup table — first-transfer latency (iteration 0) per condition
-    6. Memory bar chart — RSS peak + guest linear memory
-    7. Wrapper-overhead figure — C3 vs C5 RTT comparison
-    8. Statistical tests — Mann-Whitney U + Cliff's delta for key pairs
+    3. RTT violin plot — RTT distribution per condition (all three workloads)
+    4. Startup table — first-transfer latency (iteration 0) per condition
+    5. Memory bar chart — RSS peak + guest linear memory
+    6. Wrapper-overhead figure — C3 vs C5 RTT comparison
+    7. Statistical tests — Mann-Whitney U + Cliff's delta + Shapiro-Wilk
+       normality test for key pairs
+
+Note: plot_total_runtime() is defined but not called from main(). The
+total_runtime_ns CSV column is retained as operational metadata but is
+not plotted in the thesis (it adds no information beyond per-transfer RTT).
 
 Requires: pandas, matplotlib, seaborn, scipy, numpy
 Install:  pip install pandas matplotlib seaborn scipy numpy
@@ -72,17 +76,16 @@ sns.set_theme(style="whitegrid", font_scale=1.1)
 # ── CSV loading ───────────────────────────────────────────────────────────────
 
 CSV_DTYPES = {
-    "condition":       str,
-    "workload":        str,
-    "iteration":       "int64",
-    "bytes":           "int64",
-    "duration_ns":     "int64",
-    "user_cpu_us":     "int64",
-    "sys_cpu_us":      "int64",
-    "rss_peak_kb":     "int64",
-    "guest_mem_bytes": "float64",
-    "checksum_hex":    str,
-    "notes":           str,
+    "condition":         str,
+    "workload":          str,
+    "iteration":         "int64",
+    "bytes":             "int64",
+    "duration_ns":       "int64",
+    "rss_peak_kb":       "int64",
+    "guest_mem_bytes":   "float64",
+    "checksum_hex":      str,
+    "total_runtime_ns":  "float64",   # wall-clock guest total (optional)
+    "notes":             str,
 }
 
 
@@ -110,7 +113,6 @@ def load_results(results_dir: Path) -> pd.DataFrame:
     df["rtt_us"]    = df["duration_ns"] / 1_000.0
     df["rtt_ms"]    = df["duration_ns"] / 1_000_000.0
     df["mb_s"]      = (df["bytes"] / 1_048_576.0) / (df["duration_ns"] / 1e9)
-    df["total_cpu_us"] = df["user_cpu_us"] + df["sys_cpu_us"]
 
     # Order categorical columns for consistent plots
     df["condition"] = pd.Categorical(
@@ -179,6 +181,9 @@ def check_correctness(df: pd.DataFrame) -> bool:
         conds  = sub["condition"].unique().tolist()
         status = "✓ PASS" if unique == 1 else f"✗ FAIL ({unique} distinct checksums)"
         print(f"  {wl:6s}  {status}   conditions: {conds}")
+        if unique == 1:
+            sample = sub["checksum_hex"].iloc[0]
+            print(f"         SHA-256 (all conditions): {sample}")
         if unique != 1:
             ok = False
     for wl in ["ctrl", "int"]:
@@ -230,22 +235,26 @@ def plot_throughput(df: pd.DataFrame, out_dir: Path, fmt: str):
     print(f"  [plot] throughput → throughput.{fmt}")
 
 
-# ── 3. RTT violin plot ────────────────────────────────────────────────────────
+# ── 3. RTT violin plot (all three workloads) ──────────────────────────────────
 
 def plot_rtt(df: pd.DataFrame, out_dir: Path, fmt: str):
-    rtt_wl = ["ctrl", "int"]
-    sub = df[df["workload"].isin(rtt_wl)].copy()
-    if sub.empty:
-        print("  [skip] RTT violin: no ctrl/int data")
+    """Violin plot of RTT distribution for all three workloads.
+
+    Bulk transfers use milliseconds (ms) on the Y-axis; ctrl and int use
+    microseconds (µs).  One subplot per workload, combined into a single figure.
+    """
+    workloads = [w for w in WORKLOAD_ORDER if w in df["workload"].values]
+    if not workloads:
+        print("  [skip] RTT violin: no data")
         return
 
-    fig, axes = plt.subplots(1, len(rtt_wl), figsize=(6 * len(rtt_wl), 5),
+    fig, axes = plt.subplots(1, len(workloads), figsize=(6 * len(workloads), 5),
                              sharey=False)
-    if len(rtt_wl) == 1:
+    if len(workloads) == 1:
         axes = [axes]
 
-    for ax, wl in zip(axes, rtt_wl):
-        wl_data = sub[sub["workload"] == wl]
+    for ax, wl in zip(axes, workloads):
+        wl_data = df[df["workload"] == wl].copy()
         conds_present = [c for c in CONDITION_ORDER
                          if c in wl_data["condition"].cat.categories
                          and wl_data[wl_data["condition"] == c].shape[0] > 0]
@@ -253,10 +262,19 @@ def plot_rtt(df: pd.DataFrame, out_dir: Path, fmt: str):
             ax.set_title(f"{wl} — no data")
             continue
 
-        plot_data = wl_data[wl_data["condition"].isin(conds_present)]
+        plot_data = wl_data[wl_data["condition"].isin(conds_present)].copy()
+
+        # Use ms for bulk (values would be too compressed in µs), µs otherwise
+        if wl == "bulk":
+            y_col   = "rtt_ms"
+            y_label = "RTT (ms)"
+        else:
+            y_col   = "rtt_us"
+            y_label = "RTT (µs)"
+
         sns.violinplot(
             data=plot_data,
-            x="condition", y="rtt_us",
+            x="condition", y=y_col,
             order=conds_present,
             palette={c: CONDITION_COLORS.get(c, "#888") for c in conds_present},
             inner="quartile",
@@ -266,7 +284,7 @@ def plot_rtt(df: pd.DataFrame, out_dir: Path, fmt: str):
                            fontsize=9)
         ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
         ax.set_xlabel("")
-        ax.set_ylabel("RTT (µs)")
+        ax.set_ylabel(y_label)
 
     fig.suptitle("RTT distribution per condition", fontsize=13, y=1.01)
     fig.tight_layout()
@@ -274,47 +292,82 @@ def plot_rtt(df: pd.DataFrame, out_dir: Path, fmt: str):
     print(f"  [plot] RTT violin → rtt_violin.{fmt}")
 
 
-# ── 4. CPU stacked bar ────────────────────────────────────────────────────────
+# ── 4. Total runtime bar chart ────────────────────────────────────────────────
 
-def plot_cpu(df: pd.DataFrame, out_dir: Path, fmt: str):
-    agg = (df.groupby(["workload", "condition"], observed=True)
-             [["user_cpu_us", "sys_cpu_us"]]
-             .median()
-             .reset_index())
+def plot_total_runtime(df: pd.DataFrame, out_dir: Path, fmt: str):
+    """Bar chart of total wall-clock guest runtime per condition × workload.
 
-    workloads = [w for w in WORKLOAD_ORDER if w in agg["workload"].values]
-    n_wl = len(workloads)
-    if n_wl == 0:
-        print("  [skip] CPU: no data")
+    Prefers the ``total_runtime_ns`` column (emitted by benchmark binaries
+    when BENCH_START_NS / BENCH_END_NS prints are present and captured by
+    run.sh).  Falls back to summing per-iteration ``duration_ns`` values when
+    that column is absent or all-NaN, which gives the total time spent inside
+    USB transfers (excludes loop bookkeeping overhead, but is a close proxy).
+
+    Units: milliseconds (ms).
+    """
+    workloads = [w for w in WORKLOAD_ORDER if w in df["workload"].values]
+    if not workloads:
+        print("  [skip] total runtime: no data")
         return
 
+    has_wall = ("total_runtime_ns" in df.columns and
+                df["total_runtime_ns"].notna().any())
+    src_label = "wall-clock (BENCH_START/END)" if has_wall else "sum of transfer durations"
+
+    rows = []
+    for wl in workloads:
+        for cond in CONDITION_ORDER:
+            sub = df[(df["workload"] == wl) & (df["condition"] == cond)]
+            if sub.empty:
+                continue
+            if has_wall:
+                # take the last (or only) reported total_runtime_ns per run
+                val_ns = sub["total_runtime_ns"].dropna()
+                if val_ns.empty:
+                    val_ms = sub["duration_ns"].sum() / 1e6
+                else:
+                    val_ms = float(val_ns.iloc[-1]) / 1e6
+            else:
+                val_ms = sub["duration_ns"].sum() / 1e6
+            rows.append({"workload": wl, "condition": cond, "total_ms": val_ms})
+
+    if not rows:
+        print("  [skip] total runtime: could not compute values")
+        return
+
+    agg = pd.DataFrame(rows)
+    n_wl = len(workloads)
     fig, axes = plt.subplots(1, n_wl, figsize=(4 * n_wl, 5), sharey=False)
     if n_wl == 1:
         axes = [axes]
 
     for ax, wl in zip(axes, workloads):
-        wl_data = agg[agg["workload"] == wl].sort_values("condition")
-        conds   = wl_data["condition"].tolist()
+        wl_data = agg[agg["workload"] == wl]
+        conds   = [c for c in CONDITION_ORDER if c in wl_data["condition"].values]
         x       = np.arange(len(conds))
-        usr     = wl_data["user_cpu_us"].values
-        sys_    = wl_data["sys_cpu_us"].values
+        vals    = [float(wl_data.loc[wl_data["condition"] == c, "total_ms"].iloc[0])
+                   for c in conds]
+        colors  = [CONDITION_COLORS.get(c, "#888") for c in conds]
 
-        ax.bar(x, usr,  label="user",   color="#1976D2", edgecolor="white")
-        ax.bar(x, sys_, label="system", color="#F57C00", edgecolor="white",
-               bottom=usr)
+        bars = ax.bar(x, vals, color=colors, edgecolor="white", linewidth=0.5)
         ax.set_xticks(x)
-        ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conds],
-                           fontsize=9)
+        ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conds], fontsize=9)
         ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
-        ax.set_ylabel("CPU time (µs, median per transfer)")
-        if ax == axes[0]:
-            ax.legend(fontsize=8)
+        ax.set_ylabel("Total runtime (ms)")
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.0f"))
 
-    fig.suptitle("CPU time per transfer (user + system, median)", fontsize=13,
-                 y=1.01)
+        for bar, val in zip(bars, vals):
+            h = bar.get_height()
+            ax.annotate(f"{val:.0f}",
+                        (bar.get_x() + bar.get_width() / 2, h),
+                        ha="center", va="bottom", fontsize=9,
+                        xytext=(0, 2), textcoords="offset points")
+
+    fig.suptitle(f"Total guest runtime per condition ({src_label})",
+                 fontsize=12, y=1.01)
     fig.tight_layout()
-    _save(fig, out_dir / f"cpu_usage.{fmt}")
-    print(f"  [plot] CPU usage → cpu_usage.{fmt}")
+    _save(fig, out_dir / f"total_runtime.{fmt}")
+    print(f"  [plot] total runtime → total_runtime.{fmt}")
 
 
 # ── 5. Startup latency (iteration 0) ─────────────────────────────────────────
@@ -476,10 +529,11 @@ def plot_wrapper_overhead(df: pd.DataFrame, out_dir: Path, fmt: str):
 # ── 7b. Single-comparison overhead figures ───────────────────────────────────
 #
 # Each figure shows exactly one A-vs-B comparison, with the three workloads
-# side-by-side as subplots. Absolute median RTT is drawn as bars with values
-# on top and IQR/2 error bars. The relative %-delta is intentionally omitted:
-# it is misleading for W-ctrl because the native baseline benefits from macOS
-# IOKit descriptor caching, making any relative figure unrepresentative.
+# side-by-side as subplots.  Absolute median RTT is drawn as bars with values
+# on top and ±1σ (standard deviation) error bars.  The relative %-delta is
+# intentionally omitted: it is misleading for W-ctrl because the native
+# baseline benefits from macOS IOKit descriptor caching, making any relative
+# figure unrepresentative.
 
 def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
               cond_a: str, cond_b: str,
@@ -501,10 +555,9 @@ def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
 
         med_a = a.median()
         med_b = b.median()
-        # Use IQR/2 as a robust spread indicator (more honest than std for
-        # heavy-tailed RTT distributions).
-        spread_a = (a.quantile(0.75) - a.quantile(0.25)) / 2
-        spread_b = (b.quantile(0.75) - b.quantile(0.25)) / 2
+        # ±1σ (standard deviation) as the spread indicator
+        spread_a = a.std()
+        spread_b = b.std()
         x = np.array([0, 1])
         bars = ax.bar(x, [med_a, med_b],
                       yerr=[spread_a, spread_b],
@@ -545,64 +598,85 @@ def plot_all_pairs(df: pd.DataFrame, out_dir: Path, fmt: str):
     """Three single-comparison figures answering Q1 (libusb), Q1 (rusb), Q2."""
     plot_pair(df, out_dir, fmt,
               "native-libusb", "wasi-libusb",
-              "Q1a — WASI overhead on the libusb path (C1 vs C2)",
+              "Q1a — WASI overhead on the libusb path (C1 vs C2)\n"
+              "Error bars: ±1 standard deviation",
               "q1_libusb_overhead")
     plot_pair(df, out_dir, fmt,
               "native-rusb", "wasi-rusb",
-              "Q1b — WASI overhead on the rusb path (C3 vs C4)",
+              "Q1b — WASI overhead on the rusb path (C3 vs C4)\n"
+              "Error bars: ±1 standard deviation",
               "q1_rusb_overhead")
     plot_pair(df, out_dir, fmt,
               "wasi-libusb", "wasi-rusb",
-              "Q2 — libusb vs rusb inside the sandbox (C2 vs C4)",
+              "Q2 — libusb vs rusb inside the sandbox (C2 vs C4)\n"
+              "Error bars: ±1 standard deviation",
               "q2_backend_in_sandbox")
 
 
-# ── 7c. LaTeX summary table export ────────────────────────────────────────────
+# ── 7c. LaTeX summary table export (three separate sub-tables) ───────────────
 
 def export_summary_latex(df: pd.DataFrame, out_dir: Path):
-    """Write a LaTeX-ready summary table of RTT statistics per workload × condition."""
-    rows = []
+    """Write three LaTeX tabular environments — one per workload — with columns
+    median, mean, stdev, max (RTT in µs).  For W-bulk, throughput (MB/s) is
+    appended as an extra column.
+
+    Each sub-table is written to its own file:
+      summary_table_bulk.tex, summary_table_ctrl.tex, summary_table_int.tex
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
     for wl in WORKLOAD_ORDER:
         sub = df[df["workload"] == wl]
         if sub.empty:
             continue
+
+        rows = []
         for cond in CONDITION_ORDER:
             s = sub[sub["condition"] == cond]["rtt_us"].dropna()
             if s.empty:
                 continue
-            rows.append({
-                "workload":  wl,
+            row = {
                 "condition": cond,
                 "n":         len(s),
                 "median":    s.median(),
                 "mean":      s.mean(),
-                "p95":       s.quantile(0.95),
-                "p99":       s.quantile(0.99),
+                "stdev":     s.std(),
                 "max":       s.max(),
-            })
-    if not rows:
-        print("  [skip] LaTeX table: no data")
-        return
+            }
+            if wl == "bulk":
+                t = sub[sub["condition"] == cond]["mb_s"].dropna()
+                row["mb_s"] = t.median() if not t.empty else float("nan")
+            rows.append(row)
 
-    out = out_dir / "summary_table.tex"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w") as f:
-        f.write("% Auto-generated by analyze.py — do not edit by hand.\n")
-        f.write("% RTT in microseconds, sorted by workload and condition.\n")
-        f.write("\\begin{tabular}{llrrrrrr}\n")
-        f.write("\\toprule\n")
-        f.write("Workload & Condition & $n$ & median & mean & p95 & p99 & max \\\\\n")
-        f.write("\\midrule\n")
-        prev_wl = None
-        for r in rows:
-            wl_cell = r["workload"] if r["workload"] != prev_wl else ""
-            prev_wl = r["workload"]
-            f.write(f"{wl_cell} & {r['condition']} & {r['n']:d} & "
-                    f"{r['median']:.1f} & {r['mean']:.1f} & "
-                    f"{r['p95']:.1f} & {r['p99']:.1f} & {r['max']:.1f} \\\\\n")
-        f.write("\\bottomrule\n")
-        f.write("\\end{tabular}\n")
-    print(f"  [latex] summary table → {out.name}")
+        if not rows:
+            continue
+
+        fname = out_dir / f"summary_table_{wl}.tex"
+        with fname.open("w") as f:
+            f.write(f"% Auto-generated by analyze.py — do not edit by hand.\n")
+            f.write(f"% Workload: {wl}   RTT in µs.\n")
+            if wl == "bulk":
+                f.write("\\begin{tabular}{lrrrrrr}\n")
+                f.write("\\toprule\n")
+                f.write("Condition & $n$ & median (µs) & mean (µs) & std (µs) "
+                        "& max (µs) & median (MB/s) \\\\\n")
+            else:
+                f.write("\\begin{tabular}{lrrrrr}\n")
+                f.write("\\toprule\n")
+                f.write("Condition & $n$ & median (µs) & mean (µs) & std (µs) "
+                        "& max (µs) \\\\\n")
+            f.write("\\midrule\n")
+            for r in rows:
+                line = (f"{r['condition']} & {r['n']:d} & "
+                        f"{r['median']:.1f} & {r['mean']:.1f} & "
+                        f"{r['stdev']:.1f} & {r['max']:.1f}")
+                if wl == "bulk":
+                    mb = r.get("mb_s", float("nan"))
+                    line += f" & {mb:.1f}" if not np.isnan(mb) else " & —"
+                line += " \\\\\n"
+                f.write(line)
+            f.write("\\bottomrule\n")
+            f.write("\\end{tabular}\n")
+        print(f"  [latex] summary table ({wl}) → {fname.name}")
 
 
 # ── 8. Statistical tests ──────────────────────────────────────────────────────
@@ -615,6 +689,39 @@ PAIRS = [
     ("native-libusb", "native-rusb",  "C1↔C3  Language effect (native)"),
     ("wasi-libusb",   "wasi-raw-wit", "C2↔C5  Language effect (WASI)"),
 ]
+
+
+def print_shapiro(df: pd.DataFrame):
+    """Shapiro-Wilk normality test per condition × workload.
+
+    Justification for non-parametric tests: if distributions are significantly
+    non-normal (p < 0.001 after Bonferroni correction), Mann-Whitney U +
+    Cliff's delta are the appropriate statistics; otherwise a t-test and
+    Cohen's d would be equally valid.
+    """
+    print("\n━━━ Normality tests (Shapiro-Wilk, H₀: data is normally distributed) ━")
+    n_tests = sum(
+        1
+        for wl in WORKLOAD_ORDER
+        for cond in CONDITION_ORDER
+        if not df[(df["workload"] == wl) & (df["condition"] == cond)]["rtt_us"].dropna().empty
+    )
+    bonferroni = 0.05 / max(n_tests, 1)
+    print(f"  Bonferroni-corrected α = 0.05 / {n_tests} = {bonferroni:.2e}\n")
+    for wl in WORKLOAD_ORDER:
+        print(f"  Workload: {wl}")
+        print(f"  {'Condition':<18} {'n':>6} {'W':>10} {'p':>12}  normal?")
+        print("  " + "─" * 55)
+        for cond in CONDITION_ORDER:
+            s = df[(df["workload"] == wl) & (df["condition"] == cond)]["rtt_us"].dropna()
+            if len(s) < 3:
+                continue
+            # Shapiro-Wilk is reliable for n ≤ 5000; subsample if larger
+            sample = s.values if len(s) <= 5000 else np.random.choice(s.values, 5000, replace=False)
+            w, p = stats.shapiro(sample)
+            normal = "yes" if p >= bonferroni else "NO"
+            print(f"  {cond:<18} {len(s):>6} {w:>10.4f} {p:>12.2e}  {normal}")
+        print()
 
 
 def print_stats(df: pd.DataFrame):
@@ -710,6 +817,9 @@ def main():
     # 5. Startup table (text only)
     print_startup(df)
 
+    # Normality test (justifies Mann-Whitney U choice)
+    print_shapiro(df)
+
     # 8. Statistical tests (text only)
     print_summary(df)
     print_stats(df)
@@ -724,11 +834,8 @@ def main():
     # 2. Throughput
     plot_throughput(df, plots_dir, args.fmt)
 
-    # 3. RTT violins
+    # 3. RTT violins (all three workloads)
     plot_rtt(df, plots_dir, args.fmt)
-
-    # 4. CPU usage
-    plot_cpu(df, plots_dir, args.fmt)
 
     # 6. Memory
     plot_memory(df, plots_dir, args.fmt, results_dir=results_dir)
@@ -739,7 +846,7 @@ def main():
     # 7b. Single-comparison overhead figures (Q1a, Q1b, Q2)
     plot_all_pairs(df, plots_dir, args.fmt)
 
-    # 7c. LaTeX summary table
+    # 7c. LaTeX summary tables (one per workload, stdev instead of p95/p99)
     export_summary_latex(df, plots_dir)
 
     print(f"\n✓ Done — figures in {plots_dir}")

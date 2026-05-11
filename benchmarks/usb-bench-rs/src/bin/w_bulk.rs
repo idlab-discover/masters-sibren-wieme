@@ -186,6 +186,10 @@ fn run_benchmark(
         row.rss_peak_kb = delta.rss_peak_kb;
         row.guest_mem_bytes = csv::guest_mem_bytes();
         row.notes = Some(mode_note.clone());
+        // Write total wall-clock loop time on the final iteration only.
+        if iter == cfg.iterations - 1 {
+            row.total_runtime_ns = Some(loop_start.elapsed().as_nanos() as u64);
+        }
         logger.write(&row)?;
 
         // Progress every 10 iterations

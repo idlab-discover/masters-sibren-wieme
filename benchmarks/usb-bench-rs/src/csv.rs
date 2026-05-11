@@ -3,8 +3,13 @@
 //! Schema (must stay in sync with `usb-bench-c/src/csv.{c,h}`):
 //! ```text
 //! timestamp_iso,condition,workload,iteration,bytes,duration_ns,
-//! user_cpu_us,sys_cpu_us,rss_peak_kb,guest_mem_bytes,checksum_hex,notes
+//! user_cpu_us,sys_cpu_us,rss_peak_kb,guest_mem_bytes,checksum_hex,
+//! total_runtime_ns,notes
 //! ```
+//!
+//! `total_runtime_ns`: wall-clock elapsed time of the entire measurement loop,
+//! in nanoseconds.  Written only on the final iteration row; left empty on all
+//! other rows.
 //!
 //! Empty fields are written as the empty string. Fields containing
 //! `,`, `"`, `\n`, or `\r` are CSV-quoted with embedded `"` doubled.
@@ -28,6 +33,9 @@ pub struct Row {
     /// `None` for native cells (column is left empty in CSV).
     pub guest_mem_bytes: Option<u64>,
     pub checksum_hex: Option<String>,
+    /// Wall-clock elapsed time of the entire measurement loop (nanoseconds).
+    /// `Some` only on the final iteration row; `None` on all others.
+    pub total_runtime_ns: Option<u64>,
     pub notes: Option<String>,
 }
 
@@ -44,6 +52,7 @@ impl Row {
             rss_peak_kb: 0,
             guest_mem_bytes: None,
             checksum_hex: None,
+            total_runtime_ns: None,
             notes: None,
         }
     }
@@ -67,7 +76,7 @@ impl Logger {
                 writer,
                 "timestamp_iso,condition,workload,iteration,bytes,duration_ns,\
                  user_cpu_us,sys_cpu_us,rss_peak_kb,guest_mem_bytes,\
-                 checksum_hex,notes"
+                 checksum_hex,total_runtime_ns,notes"
             )?;
         }
         Ok(Self { writer })
@@ -80,10 +89,14 @@ impl Logger {
             .map(|v| v.to_string())
             .unwrap_or_default();
         let checksum = row.checksum_hex.as_deref().unwrap_or("");
+        let total_rt = row
+            .total_runtime_ns
+            .map(|v| v.to_string())
+            .unwrap_or_default();
         let notes = row.notes.as_deref().unwrap_or("");
         writeln!(
             self.writer,
-            "{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
             csv_escape(&ts),
             csv_escape(&row.condition),
             csv_escape(&row.workload),
@@ -95,6 +108,7 @@ impl Logger {
             row.rss_peak_kb,
             guest_mem,
             csv_escape(checksum),
+            total_rt,
             csv_escape(notes),
         )?;
         self.writer.flush()
@@ -291,8 +305,9 @@ mod tests {
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 2);
         assert!(lines[0].starts_with("timestamp_iso,"));
+        assert!(lines[0].contains("total_runtime_ns"));
         assert!(lines[1].contains(",native-rusb,bulk,0,1048576,12345678,"));
-        assert!(lines[1].ends_with(",deadbeef,"));
+        assert!(lines[1].contains(",deadbeef,,"));
 
         let _ = std::fs::remove_file(&path);
         Ok(())

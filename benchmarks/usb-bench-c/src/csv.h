@@ -2,7 +2,11 @@
  *
  * Schema (must stay in sync with usb-bench-rs/src/csv.rs):
  *   timestamp_iso,condition,workload,iteration,bytes,duration_ns,
- *   user_cpu_us,sys_cpu_us,rss_peak_kb,guest_mem_bytes,checksum_hex,notes
+ *   rss_peak_kb,guest_mem_bytes,checksum_hex,total_runtime_ns,notes
+ *
+ * total_runtime_ns: wall-clock elapsed time of the entire measurement loop,
+ * in nanoseconds. Written only on the final iteration row (has_total_runtime=1);
+ * left empty on all other rows. Consumers sum or ignore it accordingly.
  *
  * Empty fields are written as the empty string. Strings are CSV-quoted only
  * when they contain a comma, double-quote, or newline.
@@ -28,10 +32,12 @@ typedef struct {
     uint64_t    user_cpu_us;
     uint64_t    sys_cpu_us;
     uint64_t    rss_peak_kb;
-    uint64_t    guest_mem_bytes;  /* 0 → empty for native cells (set has_guest_mem = 0) */
-    int         has_guest_mem;    /* 0: write empty string; 1: write number */
-    const char *checksum_hex;     /* NULL → empty */
-    const char *notes;            /* NULL → empty */
+    uint64_t    guest_mem_bytes;   /* 0 → empty for native cells (set has_guest_mem = 0) */
+    int         has_guest_mem;     /* 0: write empty string; 1: write number */
+    const char *checksum_hex;      /* NULL → empty */
+    uint64_t    total_runtime_ns;  /* wall-clock ns for the full loop (last row only) */
+    int         has_total_runtime; /* 0: write empty; 1: write total_runtime_ns */
+    const char *notes;             /* NULL → empty */
 } bench_row_t;
 
 /* Open output CSV at `path`, appending. Writes the header if the file is new

@@ -593,19 +593,24 @@ int main(int argc, char **argv)
 
         uint64_t gmem = bench_guest_mem_bytes();
         bench_row_t row = {
-            .condition       = condition,
-            .workload        = "bulk",
-            .iteration       = (uint32_t)iter,
-            .bytes           = bytes_per_iter,
-            .duration_ns     = duration_ns,
-            .user_cpu_us     = ru_after.user_us  - ru_before.user_us,
-            .sys_cpu_us      = ru_after.sys_us   - ru_before.sys_us,
-            .rss_peak_kb     = ru_after.rss_peak_kb,
-            .guest_mem_bytes = gmem,
-            .has_guest_mem   = (gmem != 0),
-            .checksum_hex    = NULL,
-            .notes           = notes_buf,
+            .condition         = condition,
+            .workload          = "bulk",
+            .iteration         = (uint32_t)iter,
+            .bytes             = bytes_per_iter,
+            .duration_ns       = duration_ns,
+            .user_cpu_us       = ru_after.user_us  - ru_before.user_us,
+            .sys_cpu_us        = ru_after.sys_us   - ru_before.sys_us,
+            .rss_peak_kb       = ru_after.rss_peak_kb,
+            .guest_mem_bytes   = gmem,
+            .has_guest_mem     = (gmem != 0),
+            .checksum_hex      = NULL,
+            .notes             = notes_buf,
         };
+        /* Write total wall-clock loop time on the final iteration only. */
+        if (iter == iters - 1) {
+            row.total_runtime_ns  = bench_now_ns() - wall_start;
+            row.has_total_runtime = 1;
+        }
         bench_csv_write(csv, &row);
 
         if (iter % 10 == 0 || iter == iters - 1) {
