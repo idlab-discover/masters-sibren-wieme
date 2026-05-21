@@ -147,11 +147,11 @@ rt_prefix() {
     case "$(uname -s)" in
         Linux)
             if command -v chrt &>/dev/null; then
-                echo "${SUDO} chrt -f 50"
+                echo "chrt -f 50"
             fi
             ;;
         Darwin)
-            echo "${SUDO} nice -n -20"
+            echo "nice -n -20"
             ;;
         *) echo "" ;;
     esac
