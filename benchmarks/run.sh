@@ -134,13 +134,15 @@ platform_tune() {
             fi
             ;;
         Darwin)
-            echo "  [tune] macOS: no CPU governor; ensure no background load"
+            echo "  [tune] macOS: no CPU governor; nice -n -20 priority applied per cell"
             ;;
     esac
 }
 
-# ── RT scheduling wrapper (Linux only) ───────────────────────────────────────
-# Echoes a prefix command or nothing
+# ── RT scheduling wrapper ─────────────────────────────────────────────────────
+# Echoes a priority prefix command or nothing.
+# Linux : chrt -f 50 (FIFO real-time scheduling, priority 50; requires root).
+# macOS : nice -n -20 (highest scheduling priority; sudo already in prefix).
 rt_prefix() {
     case "$(uname -s)" in
         Linux)
@@ -148,9 +150,28 @@ rt_prefix() {
                 echo "${SUDO} chrt -f 50"
             fi
             ;;
+        Darwin)
+            echo "${SUDO} nice -n -20"
+            ;;
         *) echo "" ;;
     esac
 }
+
+# ── /usr/bin/time wrapper ─────────────────────────────────────────────────────
+# Echoes the external time command for peak RSS + context-switch measurement.
+# macOS BSD time (-l) reports RSS in bytes; Linux GNU time (-v) in KiB.
+# Output goes to stderr and is captured per cell in *.rusage files by run_cmd.
+time_wrap() {
+    case "$(uname -s)" in
+        Darwin) echo "/usr/bin/time -l" ;;
+        Linux)  echo "/usr/bin/time -v" ;;
+        *)      echo "" ;;
+    esac
+}
+
+# Per-timed-run globals — set just before run_cell, cleared after.
+_TIME_PREFIX=""   # expands to time_wrap output; injected before binary in run_cell
+_RUSAGE_FILE=""   # path for per-cell /usr/bin/time stderr capture
 
 # ── resource tracking ─────────────────────────────────────────────────────────
 # Polls ps -o rss= every 200 ms for PID $1 and appends timestamp_ms,rss_kb to
@@ -182,15 +203,25 @@ run_cmd() {
     echo "    \$ $*"
     if [[ $DRY_RUN -eq 0 ]]; then
         local rc=0
+        local rusage="${_RUSAGE_FILE:-}"
         if [[ -n "${_TRACK_CSV:-}" ]]; then
-            eval "$@" &
+            # Run in background for RSS polling; redirect stderr to rusage file if set.
+            if [[ -n "${rusage}" ]]; then
+                eval "$@" 2>"${rusage}" &
+            else
+                eval "$@" &
+            fi
             local pid=$! tpid
             tpid=$(start_resource_tracker "${pid}" "${_TRACK_CSV}")
             wait "${pid}" 2>/dev/null; rc=$?
             kill "${tpid}" 2>/dev/null || true
             wait "${tpid}" 2>/dev/null || true
         else
-            eval "$@"; rc=$?
+            if [[ -n "${rusage}" ]]; then
+                eval "$@" 2>"${rusage}"; rc=$?
+            else
+                eval "$@"; rc=$?
+            fi
         fi
         if [[ ${rc} -ne 0 ]]; then
             echo "  [WARN] command exited with status ${rc} — device may not be connected"
@@ -245,7 +276,7 @@ run_cell() {
         C1)
             local bin="${C_NATIVE_BIN}/w_${wl}"
             if [[ ! -f "${bin}" ]]; then warn_skip "${cond}:${wl}" "${bin}"; return; fi
-            run_cmd ${SUDO} ${rt} "\"${bin}\"" \
+            run_cmd ${SUDO} ${rt} ${_TIME_PREFIX:-} "\"${bin}\"" \
                 "\"${out_csv}\"" "\"${vidpid}\"" "\"${iters}\"" \
                 --condition native-libusb
             ;;
@@ -256,7 +287,7 @@ run_cell() {
             if [[ ! -f "${wasm}" ]];  then warn_skip "${cond}:${wl}" "${wasm}"; return; fi
             if [[ ! -x "${HOST}" ]];  then warn_skip "${cond}:${wl}" "${HOST}"; return; fi
             run_cmd cd "\"${REPO_ROOT}\"" "&&" \
-                ${SUDO} ${rt} "\"${HOST}\"" -c "\"${wasm}\"" -- \
+                ${SUDO} ${rt} ${_TIME_PREFIX:-} "\"${HOST}\"" -c "\"${wasm}\"" -- \
                 "\"${rel_csv}\"" "\"${vidpid}\"" "\"${iters}\"" \
                 --condition wasi-libusb
             ;;
@@ -265,7 +296,7 @@ run_cell() {
         C3)
             local bin="${RS_NATIVE_BIN}/w_${wl}"
             if [[ ! -f "${bin}" ]]; then warn_skip "${cond}:${wl}" "${bin}"; return; fi
-            run_cmd ${SUDO} ${rt} "\"${bin}\"" \
+            run_cmd ${SUDO} ${rt} ${_TIME_PREFIX:-} "\"${bin}\"" \
                 "\"${out_csv}\"" "\"${vidpid}\"" "\"${iters}\"" \
                 --condition native-rusb
             ;;
@@ -276,7 +307,7 @@ run_cell() {
             if [[ ! -f "${wasm}" ]];  then warn_skip "${cond}:${wl}" "${wasm}"; return; fi
             if [[ ! -x "${HOST}" ]];  then warn_skip "${cond}:${wl}" "${HOST}"; return; fi
             run_cmd cd "\"${REPO_ROOT}\"" "&&" \
-                ${SUDO} ${rt} "\"${HOST}\"" -c "\"${wasm}\"" -- \
+                ${SUDO} ${rt} ${_TIME_PREFIX:-} "\"${HOST}\"" -c "\"${wasm}\"" -- \
                 "\"${rel_csv}\"" "\"${vidpid}\"" "\"${iters}\"" \
                 --condition wasi-rusb
             ;;
@@ -287,7 +318,7 @@ run_cell() {
             if [[ ! -f "${wasm}" ]];  then warn_skip "${cond}:${wl}" "${wasm}"; return; fi
             if [[ ! -x "${HOST}" ]];  then warn_skip "${cond}:${wl}" "${HOST}"; return; fi
             run_cmd cd "\"${REPO_ROOT}\"" "&&" \
-                ${SUDO} ${rt} "\"${HOST}\"" -c "\"${wasm}\"" -- \
+                ${SUDO} ${rt} ${_TIME_PREFIX:-} "\"${HOST}\"" -c "\"${wasm}\"" -- \
                 "\"${rel_csv}\"" "\"${vidpid}\"" "\"${iters}\"" \
                 --condition wasi-raw-wit
             ;;
@@ -447,8 +478,12 @@ main() {
 
             warm_cell "${cond}" "${wl}" || true
             _TRACK_CSV="${OUT_DIR}/resources_${cond}_${wl}.csv"
+            _TIME_PREFIX="$(time_wrap)"
+            _RUSAGE_FILE="${OUT_DIR}/rusage_${cond}_${wl}.txt"
             run_cell  "${cond}" "${wl}" "${out_csv}" "${iters}" || true
             _TRACK_CSV=""
+            _TIME_PREFIX=""
+            _RUSAGE_FILE=""
 
             # Cooldown: let USB stack settle between cells
             if [[ $DRY_RUN -eq 0 && $SMOKE -eq 0 ]]; then

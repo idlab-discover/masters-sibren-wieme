@@ -31,6 +31,7 @@ Install:  pip install pandas matplotlib seaborn scipy numpy
 """
 
 import argparse
+import re
 import sys
 import os
 from pathlib import Path
@@ -248,6 +249,15 @@ def plot_throughput(df: pd.DataFrame, out_dir: Path, fmt: str):
     ax.set_yticklabels([CONDITION_LABELS.get(c, c) for c in conds_present],
                        fontsize=9)
     _clip_xlim(ax, plot_data["mb_s"], plot_data["condition"])
+    # Annotate median value next to each violin's median line
+    for i, c in enumerate(conds_present):
+        vals = plot_data[plot_data["condition"] == c]["mb_s"].dropna()
+        if vals.empty:
+            continue
+        med = vals.median()
+        if not np.isnan(med):
+            ax.text(med, i, f"  {med:.1f}", va="center", ha="left",
+                    fontsize=8, color="black")
     ax.set_xlabel("Throughput (MB/s)")
     ax.set_ylabel("")
     ax.set_title("W-bulk throughput distribution per condition\n"
@@ -447,17 +457,94 @@ def load_external_rss(results_dir: Path) -> dict:
     return peaks
 
 
+def load_rusage(results_dir: Path) -> dict:
+    """Parse per-cell rusage_C*_*.txt files written by /usr/bin/time -l (macOS)
+    or /usr/bin/time -v (Linux GNU).
+
+    Returns {(cond, wl): {"rss_mib": float|None,
+                          "vol_ctx": int|None,
+                          "invol_ctx": int|None}}.
+
+    Unit normalization:
+      macOS BSD time (-l): RSS in bytes  → divide by 1024² for MiB.
+      Linux GNU time (-v): RSS in KiB    → divide by 1024 for MiB.
+    """
+    data: dict = {}
+    for path in sorted(results_dir.glob("rusage_C[0-9]_*.txt")):
+        stem = path.stem[len("rusage_"):]   # "C2_ctrl"
+        parts = stem.split("_", 1)
+        if len(parts) != 2:
+            continue
+        short, wl = parts
+        cond = _COND_SHORT.get(short)
+        if cond is None:
+            continue
+        try:
+            text = path.read_text(errors="replace")
+        except Exception:
+            continue
+
+        rss_mib = vol_ctx = invol_ctx = None
+        for raw in text.splitlines():
+            line = raw.strip()
+            # macOS: "1122304  maximum resident set size"
+            m = re.match(r'^(\d+)\s+maximum resident set size$', line)
+            if m:
+                rss_mib = int(m.group(1)) / (1024 * 1024)
+                continue
+            # Linux: "Maximum resident set size (kbytes): 1096"
+            m = re.search(r'Maximum resident set size \(kbytes\):\s*(\d+)', line)
+            if m:
+                rss_mib = int(m.group(1)) / 1024.0
+                continue
+            # macOS: "123  voluntary context switches"
+            m = re.match(r'^(\d+)\s+voluntary context switches$', line)
+            if m:
+                vol_ctx = int(m.group(1))
+                continue
+            # Linux: "Voluntary context switches: 123"
+            m = re.search(r'Voluntary context switches:\s*(\d+)', line)
+            if m:
+                vol_ctx = int(m.group(1))
+                continue
+            # macOS: "45  involuntary context switches"
+            m = re.match(r'^(\d+)\s+involuntary context switches$', line)
+            if m:
+                invol_ctx = int(m.group(1))
+                continue
+            # Linux: "Involuntary context switches: 45"
+            m = re.search(r'Involuntary context switches:\s*(\d+)', line)
+            if m:
+                invol_ctx = int(m.group(1))
+                continue
+
+        if rss_mib is not None or vol_ctx is not None or invol_ctx is not None:
+            data[(cond, wl)] = {
+                "rss_mib":   rss_mib,
+                "vol_ctx":   vol_ctx,
+                "invol_ctx": invol_ctx,
+            }
+    return data
+
+
 def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str,
                 results_dir: Path | None = None):
-    """Bar chart of peak RSS per condition, using external poller data when
-    available (resources_*.csv from run.sh) and falling back to the in-process
-    rss_peak_kb column otherwise.
+    """Grouped bar chart of peak host RSS and guest linear memory per condition.
 
-    ps -o rss= is used for the external measurement, which reports KiB on both
-    Linux and macOS.  getrusage inside a Wasm guest always returns zero, so
-    the external poller is the only reliable source for WASI conditions.
+    RSS source priority (most to least reliable):
+      1. /usr/bin/time -l/-v rusage files (rusage_*.txt) — kernel-measured at exit.
+      2. 200 ms ps poller (resources_*.csv) — fallback for older result sets.
+      3. In-process rss_peak_kb column — unreliable for WASI (getrusage returns 0).
+
+    Bars are side-by-side (grouped) so both values can be read independently.
+    Host RSS includes the Wasmtime runtime; guest linear memory is the portion
+    Wasmtime allocates for the Wasm linear address space (~45 MiB per component,
+    allocated at instantiation).  C1–C3 (native conditions) have no guest memory.
+
+    Note: C1–C5 are benchmark *conditions*, not the C programming language.
     """
-    ext_rss = load_external_rss(results_dir) if results_dir is not None else {}
+    rusage_data = load_rusage(results_dir) if results_dir is not None else {}
+    ext_rss     = load_external_rss(results_dir) if results_dir is not None else {}
 
     last = (df.sort_values("iteration")
               .groupby(["workload", "condition"], observed=True)
@@ -470,43 +557,75 @@ def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str,
         print("  [skip] memory: no data")
         return
 
-    fig, axes = plt.subplots(1, n_wl, figsize=(4 * n_wl, 5), sharey=False)
+    bar_w = 0.35
+    fig, axes = plt.subplots(1, n_wl, figsize=(5 * n_wl, 5), sharey=False)
     if n_wl == 1:
         axes = [axes]
 
     for ax, wl in zip(axes, workloads):
-        wl_data = last[last["workload"] == wl].sort_values("condition")
-        conds   = wl_data["condition"].tolist()
+        wl_data = last[last["workload"] == wl]
+        conds   = [c for c in CONDITION_ORDER if c in wl_data["condition"].values]
         x       = np.arange(len(conds))
 
-        # Prefer external RSS (correct on macOS and for WASI); fall back to
-        # in-process measurement for any condition not covered by the poller.
-        rss = np.array([
-            ext_rss.get((c, wl), wl_data.loc[wl_data["condition"] == c, "rss_peak_kb"].iloc[0] / 1024.0)
-            for c in conds
-        ])
+        rss_vals   = []
+        guest_vals = []
+        for c in conds:
+            # ── host RSS ─────────────────────────────────────────────────────
+            if (c, wl) in rusage_data and rusage_data[(c, wl)]["rss_mib"] is not None:
+                rss = rusage_data[(c, wl)]["rss_mib"]
+            elif (c, wl) in ext_rss:
+                rss = ext_rss[(c, wl)]
+            else:
+                row = wl_data.loc[wl_data["condition"] == c, "rss_peak_kb"]
+                rss = float(row.iloc[0]) / 1024.0 if not row.empty else 0.0
+            rss_vals.append(rss)
 
-        # Guest linear memory (only meaningful for WASI conditions)
-        guest = np.where(
-            wl_data["guest_mem_bytes"].notna() & (wl_data["guest_mem_bytes"] > 0),
-            wl_data["guest_mem_bytes"].fillna(0).values / (1024 * 1024),
-            0.0,
-        )
+            # ── guest linear memory ──────────────────────────────────────────
+            gm_row = wl_data.loc[wl_data["condition"] == c, "guest_mem_bytes"]
+            gm = (float(gm_row.iloc[0]) / (1024 * 1024)
+                  if (not gm_row.empty
+                      and pd.notna(gm_row.iloc[0])
+                      and gm_row.iloc[0] > 0)
+                  else 0.0)
+            guest_vals.append(gm)
 
-        ax.bar(x, rss,   label="RSS peak",    color="#5C6BC0", edgecolor="white")
-        ax.bar(x, guest, label="guest linear", color="#EF9A9A", edgecolor="white",
-               bottom=rss, alpha=0.8)
+        rss_arr   = np.array(rss_vals)
+        guest_arr = np.array(guest_vals)
+
+        bars_rss   = ax.bar(x - bar_w / 2, rss_arr,   bar_w,
+                            label="Host RSS",      color="#5C6BC0", edgecolor="white")
+        bars_guest = ax.bar(x + bar_w / 2, guest_arr, bar_w,
+                            label="Guest linear",  color="#EF9A9A", edgecolor="white")
+
+        # Value annotations
+        for bar in list(bars_rss) + list(bars_guest):
+            h = bar.get_height()
+            if h > 0.1:
+                ax.annotate(f"{h:.0f}",
+                            (bar.get_x() + bar.get_width() / 2, h),
+                            ha="center", va="bottom", fontsize=7,
+                            xytext=(0, 2), textcoords="offset points")
+
         ax.set_xticks(x)
         ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conds],
-                           fontsize=9, rotation=30, ha="right")
+                           fontsize=8, rotation=45, ha="right")
         ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
         ax.set_ylabel("Memory (MiB)")
         if ax == axes[0]:
             ax.legend(fontsize=8)
 
-    src = "external poller" if ext_rss else "in-process getrusage"
-    fig.suptitle(f"Memory usage — RSS peak + guest linear memory ({src})",
-                 fontsize=12, y=1.01)
+    if rusage_data:
+        src = "/usr/bin/time (kernel peak)"
+    elif ext_rss:
+        src = "ps poller peak"
+    else:
+        src = "in-process (unreliable for WASI)"
+    fig.suptitle(
+        f"Peak memory per condition ({src})\n"
+        "Left bar = host RSS; right bar = guest linear memory.  "
+        "C1–C5 are benchmark conditions.",
+        fontsize=10, y=1.03,
+    )
     fig.tight_layout()
     _save(fig, out_dir / f"memory.{fmt}")
     print(f"  [plot] memory → memory.{fmt}")
@@ -883,6 +1002,77 @@ def print_summary(df: pd.DataFrame):
                   f"{st['p5']:>9.1f} {st['p95']:>9.1f}")
 
 
+# ── A4. Outlier rate report ───────────────────────────────────────────────────
+
+def print_outlier_rates(df: pd.DataFrame):
+    """Report the percentage of outliers (|x − median| > 1.5 × IQR) per cell.
+
+    Mirrors Leroy's methodology (he reported ~2–3% outlier rate and attributed
+    the excess to USB scheduling jitter).  Outliers are NOT removed from the
+    data — this function only reports their prevalence.  The x-axis clip in
+    violin plots is a display-only operation; the data underneath is unfiltered.
+    """
+    print("\n━━━ Outlier rates per cell  (|x−median| > 1.5×IQR, data kept) ━━━━━━")
+    print(f"  {'Workload':<8} {'Condition':<18} {'n':>6} {'outliers':>9} {'rate':>8}")
+    print("  " + "─" * 58)
+    for wl in WORKLOAD_ORDER:
+        for cond in CONDITION_ORDER:
+            s = df[(df["workload"] == wl) & (df["condition"] == cond)]["rtt_us"].dropna()
+            if len(s) < 4:
+                continue
+            q1, q3 = s.quantile(0.25), s.quantile(0.75)
+            iqr = q3 - q1
+            if iqr == 0:
+                continue
+            median    = s.median()
+            n_out     = int(((s - median).abs() > 1.5 * iqr).sum())
+            rate      = 100.0 * n_out / len(s)
+            print(f"  {wl:<8} {cond:<18} {len(s):>6} {n_out:>9} {rate:>7.2f}%")
+
+
+# ── A3. Context-switch comparison (C1 vs C2 W-ctrl) ──────────────────────────
+
+def print_ctx_switch_comparison(rusage: dict):
+    """Print per-cell context-switch totals from /usr/bin/time rusage files.
+
+    Compares C1 (native-libusb) vs C2 (wasi-libusb) on W-ctrl to substantiate
+    (or refute) the Tokio-scheduling attribution for the bimodal C2 distribution.
+    Excess involuntary context switches in C2 ≈ second-mode transfer count would
+    support the hypothesis.  Reported as supporting evidence, not per-transfer proof.
+    """
+    print("\n━━━ Context switches from /usr/bin/time (C1 vs C2, W-ctrl) ━━━━━━━━━")
+    if not rusage:
+        print("  No rusage_*.txt data found — re-run with updated run.sh to collect.")
+        return
+    print(f"  {'Condition':<18} {'vol. ctx sw':>12} {'invol. ctx sw':>14} {'RSS (MiB)':>10}")
+    print("  " + "─" * 58)
+    for label, key in [("C1 native-libusb", ("native-libusb", "ctrl")),
+                       ("C2 wasi-libusb",   ("wasi-libusb",   "ctrl"))]:
+        rec = rusage.get(key)
+        if rec is None:
+            print(f"  {label:<18} {'—':>12} {'—':>14} {'—':>10}")
+            continue
+        vol   = rec.get("vol_ctx")
+        invol = rec.get("invol_ctx")
+        rss   = rec.get("rss_mib")
+        v_s = f"{vol:12d}"   if vol   is not None else "         n/a"
+        i_s = f"{invol:14d}" if invol is not None else "           n/a"
+        r_s = f"{rss:10.1f}" if rss   is not None else "       n/a"
+        print(f"  {label:<18} {v_s} {i_s} {r_s}")
+    c1 = rusage.get(("native-libusb", "ctrl"))
+    c2 = rusage.get(("wasi-libusb",   "ctrl"))
+    if c1 and c2:
+        i1, i2 = c1.get("invol_ctx"), c2.get("invol_ctx")
+        if i1 is not None and i2 is not None:
+            excess = i2 - i1
+            sign   = "+" if excess >= 0 else ""
+            print(f"\n  Excess invol. ctx switches C2 − C1: {sign}{excess}")
+            if excess > 0:
+                print("  → supports Tokio-scheduling attribution for bimodal C2")
+            else:
+                print("  → does not support context-switch attribution; other cause likely")
+
+
 # ── Save helper ───────────────────────────────────────────────────────────────
 
 def _save(fig, path: Path):
@@ -925,6 +1115,9 @@ def main():
           f"({df['condition'].nunique()} conditions × "
           f"{df['workload'].nunique()} workloads)")
 
+    # Load rusage data (from /usr/bin/time -l/-v files if present)
+    rusage_data = load_rusage(results_dir)
+
     # 1. Correctness
     check_correctness(df)
 
@@ -937,6 +1130,12 @@ def main():
     # 8. Statistical tests (text only)
     print_summary(df)
     print_stats(df)
+
+    # A4. Outlier rate report
+    print_outlier_rates(df)
+
+    # A3. Context-switch comparison (C1 vs C2 W-ctrl)
+    print_ctx_switch_comparison(rusage_data)
 
     if args.check_only:
         print("\n[--check-only] Skipping plots.")
@@ -951,7 +1150,7 @@ def main():
     # 3. RTT violins (all three workloads)
     plot_rtt(df, plots_dir, args.fmt)
 
-    # 6. Memory
+    # 6. Memory (uses rusage as primary RSS source)
     plot_memory(df, plots_dir, args.fmt, results_dir=results_dir)
 
     # 7. Wrapper overhead
