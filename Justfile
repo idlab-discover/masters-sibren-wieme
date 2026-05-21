@@ -21,7 +21,7 @@ build-webcam:
 
 webcam: build-host build-webcam
     mkdir -p out
-    sudo {{HOST}} -c out/webcam.wasm
+    sudo {{HOST}} -c out/webcam.wasm -d "046d:094c" -u
 
 # ── Generic example builder ─────────────────────────────────────────────────
 

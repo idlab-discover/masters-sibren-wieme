@@ -65,9 +65,9 @@ CONDITION_COLORS = {
 
 WORKLOAD_ORDER = ["bulk", "ctrl", "int"]
 WORKLOAD_LABELS = {
-    "bulk": "W-bulk\n(SCSI READ)",
-    "ctrl": "W-ctrl\n(Control)",
-    "int":  "W-int\n(Interrupt)",
+    "bulk": "Bulk\n(SCSI READ, 64 KiB)",
+    "ctrl": "Control\n(GET_DESCRIPTOR, 18 B)",
+    "int":  "Interrupt\n(HID IN, 64 B)",
 }
 
 sns.set_theme(style="whitegrid", font_scale=1.1)
@@ -195,101 +195,123 @@ def check_correctness(df: pd.DataFrame) -> bool:
     return ok
 
 
-# ── 2. Throughput bar chart ───────────────────────────────────────────────────
+# ── Axis-clipping helper ──────────────────────────────────────────────────────
+
+def _clip_xlim(ax, series: pd.Series, cond_series: pd.Series,
+               left: float = 0.0, margin: float = 0.05):
+    """Set x-axis to [left, max(mean+std) * (1+margin)] to clip outlier tails.
+
+    User spec: "from 0 to mean+std of the largest condition".
+    Applied to all violin plots so extreme rare events do not compress the
+    core distribution into a thin spike.
+    """
+    per_cond_stats = series.groupby(cond_series).agg(["mean", "std"]).dropna()
+    if per_cond_stats.empty:
+        return
+    clip_max = (per_cond_stats["mean"] + per_cond_stats["std"]).max()
+    ax.set_xlim(left=left, right=clip_max * (1 + margin))
+
+
+# ── 2. Throughput violin plot (W-bulk only) ───────────────────────────────────
 
 def plot_throughput(df: pd.DataFrame, out_dir: Path, fmt: str):
-    tput_wl = ["bulk"]
-    sub = df[df["workload"].isin(tput_wl)].copy()
+    """Horizontal violin plot of per-transfer throughput distribution for W-bulk.
+
+    Shows the full MB/s distribution per condition (C1–C5), not just
+    median ± std.  Throughput (MB/s) is on the X-axis; conditions on the Y-axis.
+    One figure, 7×5 inches.
+    """
+    sub = df[df["workload"] == "bulk"].copy()
     if sub.empty:
         print("  [skip] throughput: no bulk data")
         return
 
-    agg = (sub.groupby(["workload", "condition"], observed=True)["mb_s"]
-              .agg(["median", "std"])
-              .reset_index())
-    agg.columns = ["workload", "condition", "median_mb_s", "std_mb_s"]
+    conds_present = [c for c in CONDITION_ORDER
+                     if c in sub["condition"].cat.categories
+                     and not sub[sub["condition"] == c]["mb_s"].dropna().empty]
+    if not conds_present:
+        print("  [skip] throughput: no mb_s values")
+        return
 
-    fig, axes = plt.subplots(1, len(tput_wl), figsize=(5 * len(tput_wl), 5),
-                             sharey=False)
-    if len(tput_wl) == 1:
-        axes = [axes]
+    plot_data = sub[sub["condition"].isin(conds_present)].copy()
 
-    for ax, wl in zip(axes, tput_wl):
-        wl_data = agg[agg["workload"] == wl].sort_values("condition")
-        conds   = wl_data["condition"].tolist()
-        colors  = [CONDITION_COLORS.get(c, "#888") for c in conds]
-        x       = range(len(conds))
+    fig, ax = plt.subplots(figsize=(7, 5))
+    sns.violinplot(
+        data=plot_data,
+        x="mb_s", y="condition",
+        order=conds_present,
+        orient="h",
+        palette={c: CONDITION_COLORS.get(c, "#888") for c in conds_present},
+        inner="quartile",
+        ax=ax,
+    )
+    ax.set_yticklabels([CONDITION_LABELS.get(c, c) for c in conds_present],
+                       fontsize=9)
+    _clip_xlim(ax, plot_data["mb_s"], plot_data["condition"])
+    ax.set_xlabel("Throughput (MB/s)")
+    ax.set_ylabel("")
+    ax.set_title("W-bulk throughput distribution per condition\n"
+                 "(SCSI READ, 64 KiB transfers)", fontsize=12)
+    ax.grid(axis="x", linestyle="--", alpha=0.4)
+    ax.set_axisbelow(True)
 
-        ax.bar(x, wl_data["median_mb_s"], yerr=wl_data["std_mb_s"],
-               color=colors, capsize=4, edgecolor="white", linewidth=0.5)
-        ax.set_xticks(list(x))
-        ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conds],
-                           fontsize=9)
-        ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
-        ax.set_ylabel("Throughput (MB/s)")
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.0f"))
-
-    fig.suptitle("Throughput per condition (median ± std)", fontsize=13, y=1.01)
     fig.tight_layout()
     _save(fig, out_dir / f"throughput.{fmt}")
     print(f"  [plot] throughput → throughput.{fmt}")
 
 
-# ── 3. RTT violin plot (all three workloads) ──────────────────────────────────
+# ── 3. RTT violin plots — one figure per workload ────────────────────────────
 
 def plot_rtt(df: pd.DataFrame, out_dir: Path, fmt: str):
-    """Violin plot of RTT distribution for all three workloads.
+    """One violin figure per workload for the RTT distribution (all conditions).
 
-    Bulk transfers use milliseconds (ms) on the Y-axis; ctrl and int use
-    microseconds (µs).  One subplot per workload, combined into a single figure.
+    Figures are saved as rtt_violin_bulk.{fmt}, rtt_violin_ctrl.{fmt},
+    rtt_violin_int.{fmt}.  Each is 7×6 inches so the violins are readable.
+    Scales differ between workloads (W-ctrl ~8–16 µs, W-int ~4000 µs,
+    W-bulk ~1–2 ms), so combining them in a single figure would produce
+    misleadingly small violins for the low-latency workloads.
     """
     workloads = [w for w in WORKLOAD_ORDER if w in df["workload"].values]
     if not workloads:
         print("  [skip] RTT violin: no data")
         return
 
-    fig, axes = plt.subplots(1, len(workloads), figsize=(6 * len(workloads), 5),
-                             sharey=False)
-    if len(workloads) == 1:
-        axes = [axes]
-
-    for ax, wl in zip(axes, workloads):
+    for wl in workloads:
         wl_data = df[df["workload"] == wl].copy()
         conds_present = [c for c in CONDITION_ORDER
                          if c in wl_data["condition"].cat.categories
                          and wl_data[wl_data["condition"] == c].shape[0] > 0]
         if not conds_present:
-            ax.set_title(f"{wl} — no data")
+            print(f"  [skip] rtt_violin_{wl}: no data")
             continue
 
         plot_data = wl_data[wl_data["condition"].isin(conds_present)].copy()
+        y_col, y_label = _workload_unit(wl)
 
-        # Use ms for bulk (values would be too compressed in µs), µs otherwise
-        if wl == "bulk":
-            y_col   = "rtt_ms"
-            y_label = "RTT (ms)"
-        else:
-            y_col   = "rtt_us"
-            y_label = "RTT (µs)"
-
+        fig, ax = plt.subplots(figsize=(7, 5))
         sns.violinplot(
             data=plot_data,
-            x="condition", y=y_col,
+            x=y_col, y="condition",
             order=conds_present,
+            orient="h",
             palette={c: CONDITION_COLORS.get(c, "#888") for c in conds_present},
             inner="quartile",
             ax=ax,
         )
-        ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conds_present],
+        ax.set_yticklabels([CONDITION_LABELS.get(c, c) for c in conds_present],
                            fontsize=9)
-        ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
-        ax.set_xlabel("")
-        ax.set_ylabel(y_label)
+        _clip_xlim(ax, plot_data[y_col], plot_data["condition"])
+        wl_label = WORKLOAD_LABELS.get(wl, wl).replace("\n", " ")
+        ax.set_title(f"RTT distribution — {wl_label}", fontsize=12)
+        ax.set_xlabel(y_label)
+        ax.set_ylabel("")
+        ax.grid(axis="x", linestyle="--", alpha=0.4)
+        ax.set_axisbelow(True)
 
-    fig.suptitle("RTT distribution per condition", fontsize=13, y=1.01)
-    fig.tight_layout()
-    _save(fig, out_dir / f"rtt_violin.{fmt}")
-    print(f"  [plot] RTT violin → rtt_violin.{fmt}")
+        fig.tight_layout()
+        fname = f"rtt_violin_{wl}"
+        _save(fig, out_dir / f"{fname}.{fmt}")
+        print(f"  [plot] RTT violin ({wl}) → {fname}.{fmt}")
 
 
 # ── 4. Total runtime bar chart ────────────────────────────────────────────────
@@ -476,7 +498,7 @@ def plot_memory(df: pd.DataFrame, out_dir: Path, fmt: str,
                bottom=rss, alpha=0.8)
         ax.set_xticks(x)
         ax.set_xticklabels([CONDITION_LABELS.get(c, c) for c in conds],
-                           fontsize=9)
+                           fontsize=9, rotation=30, ha="right")
         ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
         ax.set_ylabel("Memory (MiB)")
         if ax == axes[0]:
@@ -535,82 +557,81 @@ def plot_wrapper_overhead(df: pd.DataFrame, out_dir: Path, fmt: str):
 # baseline benefits from macOS IOKit descriptor caching, making any relative
 # figure unrepresentative.
 
-def plot_pair(df: pd.DataFrame, out_dir: Path, fmt: str,
-              cond_a: str, cond_b: str,
-              title: str, fname: str,
-              workloads=("ctrl", "int", "bulk")):
-    """One A-vs-B comparison with three workload subplots side by side."""
-    fig, axes = plt.subplots(1, len(workloads), figsize=(4 * len(workloads), 4.8))
-    if len(workloads) == 1:
-        axes = [axes]
+def _workload_unit(wl: str):
+    """Return (y_column, y_label) for the given workload."""
+    if wl == "bulk":
+        return "rtt_ms", "RTT (ms)"
+    return "rtt_us", "RTT (µs)"
 
-    for ax, wl in zip(axes, workloads):
+
+def plot_pair_violin_split(df: pd.DataFrame, out_dir: Path, fmt: str,
+                           cond_a: str, cond_b: str,
+                           base_title: str, fname_base: str):
+    """One violin figure *per workload* for an A-vs-B comparison.
+
+    Replaces the old side-by-side bar chart: each workload gets its own
+    figure so that y-axis scales are not misleadingly shared (W-ctrl is
+    ~8–16 µs, W-int is ~4000 µs, W-bulk is ~1–2 ms — completely different
+    scales).  Violin plots show the full RTT distribution, not just
+    median ± std.
+    """
+    workloads = [w for w in WORKLOAD_ORDER if w in df["workload"].values]
+    for wl in workloads:
         sub = df[df["workload"] == wl]
         a = sub[sub["condition"] == cond_a]["rtt_us"].dropna()
         b = sub[sub["condition"] == cond_b]["rtt_us"].dropna()
         if a.empty or b.empty:
-            ax.set_title(f"{wl} — no data")
-            ax.axis("off")
+            print(f"  [skip] {fname_base}_{wl}: insufficient data")
             continue
 
-        med_a = a.median()
-        med_b = b.median()
-        # ±1σ (standard deviation) as the spread indicator
-        spread_a = a.std()
-        spread_b = b.std()
-        x = np.array([0, 1])
-        bars = ax.bar(x, [med_a, med_b],
-                      yerr=[spread_a, spread_b],
-                      color=[CONDITION_COLORS.get(cond_a, "#888"),
-                             CONDITION_COLORS.get(cond_b, "#888")],
-                      edgecolor="white", linewidth=0.5,
-                      capsize=5, error_kw=dict(elinewidth=1, ecolor="grey"),
-                      width=0.55)
-        ax.set_xticks(x)
-        ax.set_xticklabels([CONDITION_LABELS.get(cond_a, cond_a),
-                            CONDITION_LABELS.get(cond_b, cond_b)],
-                           fontsize=9)
-        ax.set_ylabel("Median RTT (µs)")
-        ax.set_title(WORKLOAD_LABELS.get(wl, wl), fontsize=11)
+        y_col, y_label = _workload_unit(wl)
 
-        # Absolute value labels on the bars
-        for bar, val in zip(bars, [med_a, med_b]):
-            h = bar.get_height()
-            ax.annotate(f"{val:.1f} µs",
-                        (bar.get_x() + bar.get_width() / 2, h),
-                        ha="center", va="bottom",
-                        fontsize=10, fontweight="bold",
-                        xytext=(0, 3), textcoords="offset points")
+        plot_data = sub[sub["condition"].isin([cond_a, cond_b])].copy()
+        conds_here = [c for c in [cond_a, cond_b]
+                      if c in plot_data["condition"].values]
 
-        ymax = max(med_a + spread_a, med_b + spread_b) * 1.2
-        ax.set_ylim(0, ymax)
-
-        ax.grid(axis="y", linestyle="--", alpha=0.4)
+        fig, ax = plt.subplots(figsize=(6, 4))
+        sns.violinplot(
+            data=plot_data,
+            x=y_col, y="condition",
+            order=conds_here,
+            orient="h",
+            palette={c: CONDITION_COLORS.get(c, "#888") for c in conds_here},
+            inner="quartile",
+            ax=ax,
+        )
+        ax.set_yticklabels(
+            [CONDITION_LABELS.get(c, c) for c in conds_here],
+            fontsize=10,
+        )
+        _clip_xlim(ax, plot_data[y_col], plot_data["condition"])
+        ax.set_xlabel(y_label)
+        ax.set_ylabel("")
+        wl_label = WORKLOAD_LABELS.get(wl, wl).replace("\n", " ")
+        ax.set_title(f"{base_title}\n{wl_label}", fontsize=12)
+        ax.grid(axis="x", linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
 
-    fig.suptitle(title, fontsize=13, y=1.02)
-    fig.tight_layout()
-    _save(fig, out_dir / f"{fname}.{fmt}")
-    print(f"  [plot] {fname} → {fname}.{fmt}")
+        fig.tight_layout()
+        out_name = f"{fname_base}_{wl}"
+        _save(fig, out_dir / f"{out_name}.{fmt}")
+        print(f"  [plot] {out_name} → {out_name}.{fmt}")
 
 
 def plot_all_pairs(df: pd.DataFrame, out_dir: Path, fmt: str):
-    """Three single-comparison figures answering Q1 (libusb), Q1 (rusb), Q2."""
-    plot_pair(df, out_dir, fmt,
-              "native-libusb", "wasi-libusb",
-              "Q1a — WASI overhead on the libusb path (C1 vs C2)\n"
-              "Error bars: ±1 standard deviation",
-              "q1_libusb_overhead")
-    plot_pair(df, out_dir, fmt,
-              "native-rusb", "wasi-rusb",
-              "Q1b — WASI overhead on the rusb path (C3 vs C4)\n"
-              "Error bars: ±1 standard deviation",
-              "q1_rusb_overhead")
-    plot_pair(df, out_dir, fmt,
-              "wasi-libusb", "wasi-rusb",
-              "Q2 — libusb vs rusb inside the sandbox (C2 vs C4)\n"
-              "Error bars: ±1 standard deviation",
-              "q2_backend_in_sandbox")
+    """Per-workload violin figures for Q1 (libusb), Q1 (rusb), and Q2."""
+    plot_pair_violin_split(df, out_dir, fmt,
+                           "native-libusb", "wasi-libusb",
+                           "Q1a — WASI overhead: libusb path (C1 vs C2)",
+                           "q1_libusb_overhead")
+    plot_pair_violin_split(df, out_dir, fmt,
+                           "native-rusb", "wasi-rusb",
+                           "Q1b — WASI overhead: rusb path (C3 vs C4)",
+                           "q1_rusb_overhead")
+    plot_pair_violin_split(df, out_dir, fmt,
+                           "wasi-libusb", "wasi-rusb",
+                           "Q2 — libusb vs rusb inside the sandbox (C2 vs C4)",
+                           "q2_backend_in_sandbox")
 
 
 # ── 7c. LaTeX summary table export (three separate sub-tables) ───────────────
@@ -677,6 +698,99 @@ def export_summary_latex(df: pd.DataFrame, out_dir: Path):
             f.write("\\bottomrule\n")
             f.write("\\end{tabular}\n")
         print(f"  [latex] summary table ({wl}) → {fname.name}")
+
+
+# ── 7d. LaTeX export of statistical test tables (for appendix) ──────────────
+
+def export_stats_latex(df: pd.DataFrame, out_dir: Path):
+    """Write two appendix tables to LaTeX files:
+      stats_shapiro.tex   — Shapiro-Wilk normality test (all 15 cells)
+      stats_mannwhitney.tex — Mann-Whitney U + Cliff's delta (6 pairs × 3 workloads)
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Shapiro-Wilk table ────────────────────────────────────────────────────
+    n_tests = sum(
+        1 for wl in WORKLOAD_ORDER for cond in CONDITION_ORDER
+        if not df[(df["workload"] == wl) & (df["condition"] == cond)]["rtt_us"].dropna().empty
+    )
+    bonferroni = 0.05 / max(n_tests, 1)
+
+    fname_sw = out_dir / "stats_shapiro.tex"
+    with fname_sw.open("w") as f:
+        f.write("% Auto-generated by analyze.py — do not edit by hand.\n")
+        f.write(f"% Bonferroni-corrected α = 0.05/{n_tests} ≈ {bonferroni:.2e}\n")
+        f.write("\\begin{tabular}{llrrrr}\n")
+        f.write("\\toprule\n")
+        f.write("Workload & Condition & $n$ & $W$ & $p$ & Normal? \\\\\n")
+        f.write("\\midrule\n")
+        for wl in WORKLOAD_ORDER:
+            wl_label = {"bulk": "W-bulk", "ctrl": "W-ctrl", "int": "W-int"}.get(wl, wl)
+            first = True
+            for cond in CONDITION_ORDER:
+                s = df[(df["workload"] == wl) & (df["condition"] == cond)]["rtt_us"].dropna()
+                if len(s) < 3:
+                    continue
+                sample = s.values if len(s) <= 5000 else np.random.choice(s.values, 5000, replace=False)
+                w_stat, p_val = stats.shapiro(sample)
+                normal_str = "yes" if p_val >= bonferroni else "no"
+                wl_col = wl_label if first else ""
+                first = False
+                p_str = f"$< 10^{{{int(np.floor(np.log10(p_val + 1e-300)))}}}$" if p_val < 1e-3 else f"{p_val:.4f}"
+                f.write(f"{wl_col} & {cond} & {len(s):d} & "
+                        f"{w_stat:.4f} & {p_str} & {normal_str} \\\\\n")
+        f.write("\\bottomrule\n")
+        f.write("\\end{tabular}\n")
+    print(f"  [latex] Shapiro-Wilk table → {fname_sw.name}")
+
+    # ── Mann-Whitney + Cliff's delta table ────────────────────────────────────
+    pair_labels = [
+        ("native-libusb", "wasi-libusb",  "C1 vs C2", "WASI overhead (libusb)"),
+        ("native-rusb",   "wasi-rusb",    "C3 vs C4", "WASI overhead (rusb)"),
+        ("native-rusb",   "wasi-raw-wit", "C3 vs C5", "WASI overhead (raw WIT)"),
+        ("wasi-rusb",     "wasi-raw-wit", "C4 vs C5", "rusb wrapper cost"),
+        ("native-libusb", "native-rusb",  "C1 vs C3", "Language effect (native)"),
+        ("wasi-libusb",   "wasi-raw-wit", "C2 vs C5", "Language effect (WASI)"),
+    ]
+
+    fname_mw = out_dir / "stats_mannwhitney.tex"
+    with fname_mw.open("w") as f:
+        f.write("% Auto-generated by analyze.py — do not edit by hand.\n")
+        f.write("\\begin{tabular}{lllrrrrl}\n")
+        f.write("\\toprule\n")
+        f.write("Workload & Pair & Description & $n_a$ & $n_b$ & "
+                "$U$ & $p$ & $\\delta$ (effect) \\\\\n")
+        f.write("\\midrule\n")
+        for wl in WORKLOAD_ORDER:
+            sub = df[df["workload"] == wl]
+            wl_label = {"bulk": "W-bulk", "ctrl": "W-ctrl", "int": "W-int"}.get(wl, wl)
+            first = True
+            for cond_a, cond_b, pair_str, desc in pair_labels:
+                a = sub[sub["condition"] == cond_a]["rtt_us"].dropna().values
+                b = sub[sub["condition"] == cond_b]["rtt_us"].dropna().values
+                if len(a) < 2 or len(b) < 2:
+                    continue
+                u, p, d = mannwhitney(a, b)
+                eff = effect_label(d)
+                if np.isnan(p):
+                    p_str = "n/a"
+                elif p < 1e-10:
+                    p_str = f"$< 10^{{{int(np.floor(np.log10(p + 1e-300)))}}}$"
+                elif p < 0.001:
+                    p_str = f"{p:.2e}"
+                else:
+                    p_str = f"{p:.4f}"
+                wl_col = wl_label if first else ""
+                first = False
+                d_str = f"{d:+.3f} ({eff})"
+                f.write(f"{wl_col} & {pair_str} & {desc} & "
+                        f"{len(a):d} & {len(b):d} & "
+                        f"{u:.0f} & {p_str} & {d_str} \\\\\n")
+            if wl != WORKLOAD_ORDER[-1]:
+                f.write("\\midrule\n")
+        f.write("\\bottomrule\n")
+        f.write("\\end{tabular}\n")
+    print(f"  [latex] Mann-Whitney table → {fname_mw.name}")
 
 
 # ── 8. Statistical tests ──────────────────────────────────────────────────────
@@ -848,6 +962,9 @@ def main():
 
     # 7c. LaTeX summary tables (one per workload, stdev instead of p95/p99)
     export_summary_latex(df, plots_dir)
+
+    # 7d. LaTeX appendix tables (Shapiro-Wilk + Mann-Whitney)
+    export_stats_latex(df, plots_dir)
 
     print(f"\n✓ Done — figures in {plots_dir}")
 
