@@ -88,8 +88,7 @@ benchmark suite (C1/C2 CMake builds, C4 pkg-config pipeline) relies on Unix shel
 and was only tested on Linux and macOS.
 
 For Windows, the recommended approach is to use **WSL 2** (Windows Subsystem for Linux)
-and follow the Linux instructions above. This is what I used during development when
-working on a Windows machine.
+and follow the Linux instructions above. This is the recommended approach for development on Windows.
 
 If you specifically need a native Windows build for the host:
 
@@ -329,7 +328,7 @@ and calls the program's `main()`. No `-mexec-model=reactor` flag or manual bridg
 is required.
 
 For Rust WASM components, the component model entry is wired up via `wit-bindgen` and
-`cargo-component` — no manual `no_mangle` export is needed either.
+`cargo-component`; no manual `no_mangle` export is needed either.
 
 ### 7.4 rusb -> WASM cross-compilation (C4)
 

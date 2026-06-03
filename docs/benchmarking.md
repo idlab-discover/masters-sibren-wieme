@@ -28,16 +28,16 @@ What the comparisons isolate:
 
 | ID | Transfer | Device | VID:PID | What it measures |
 |----|----------|--------|---------|-----------------|
-| bulk | Bulk | SanDisk 3.2Gen1 USB drive | 0781:5581 | 30x SCSI READ(10), 512 KB per transfer |
+| bulk | Bulk | SanDisk 3.2Gen1 USB drive | 0781:5581 | one SCSI READ(10) per iteration, 64 KiB per transfer |
 | ctrl | Control | WASI-USB Loopback (Pico 2 firmware) | cafe:4002 | 10 000x control transfers, RTT distribution |
 | int | Interrupt | PS5 DualSense or similar HID device | 054c:0ce6 | 10 000x interrupt-IN poll, jitter |
 
 **Why no isochronous workload?**
-Control, bulk and interrupt all have synchronous libusb wrappers (`libusb_control_transfer`, `libusb_bulk_transfer`, `libusb_interrupt_transfer`): one call in, one result out. The libusb-wasi backend maps each of those directly to a single WIT round-trip on the host, so no event loop or second thread is needed in the guest — which is exactly why benchmarking them works cleanly.
+Control, bulk and interrupt all have synchronous libusb wrappers (`libusb_control_transfer`, `libusb_bulk_transfer`, `libusb_interrupt_transfer`): one call in, one result out. The libusb-wasi backend maps each of those directly to a single WIT round-trip on the host, so no event loop or second thread is needed in the guest, which is exactly why benchmarking them works cleanly.
 
-Isochronous is structurally different. libusb deliberately has no synchronous iso API because the USB host controller schedules multiple packets per transfer (typically 32), each on its own 125 µs microframe boundary, and reports per-packet `actual_length` and `status` separately. The only way to use iso correctly is to submit several transfers in-flight and pump `libusb_handle_events` in a loop to collect callbacks — that loop *must* keep running while new transfers are being submitted. On a native system you just spin a while-loop. On WASIp2 that's impossible: there are no guest threads (`wasi-threads` is still an unstabilised proposal), so there's no second execution context to pump the event loop.
+Isochronous is structurally different. libusb deliberately has no synchronous iso API because the USB host controller schedules multiple packets per transfer (typically 32), each on its own 125 µs microframe boundary, and reports per-packet `actual_length` and `status` separately. The only way to use iso correctly is to submit several transfers in-flight and pump `libusb_handle_events` in a loop to collect callbacks; that loop *must* keep running while new transfers are being submitted. On a native system you just spin a while-loop. On WASIp2 that's impossible: there are no guest threads (`wasi-threads` is still an unstabilised proposal), so there's no second execution context to pump the event loop.
 
-A host-side workaround exists in this codebase (originally built by Leroy): `usb-wasi-host` moves the event loop to a Tokio task on the host and exposes a single blocking `await-transfer` WIT call to the guest. That's enough to get the webcam demo working (25–30 fps on a Logitech Brio, see Evaluation §13.4 in the thesis), but it makes meaningful *benchmarking* impossible: all the interesting timing — submit latency, per-packet jitter, queueing efficiency — is buried behind the host-async boundary, and the guest only ever sees "the await took roughly one USB frame period". In practice the `w_iso` binaries either returned `LIBUSB_ERROR_INVALID_PARAM` on submit or hit the 5-second await timeout — neither of which reflects real iso overhead. Rather than extending Leroy's workaround further, the cleaner path is to wait for WASIp3, where `stream<u8>` primitives will let the guest consume isochronous data natively without needing guest threads at all. This is discussed in the Evaluation and Future Work chapters of the thesis.
+A host-side workaround exists in this codebase (originally built by Leroy): `usb-wasi-host` moves the event loop to a Tokio task on the host and exposes a single blocking `await-transfer` WIT call to the guest. That's enough to get the webcam demo working (25–30 fps on a Logitech Brio, see Evaluation §13.4 in the thesis), but it makes meaningful *benchmarking* impossible: all the interesting timing (submit latency, per-packet jitter, queueing efficiency) is buried behind the host-async boundary, and the guest only ever sees "the await took roughly one USB frame period". In practice the `w_iso` binaries either returned `LIBUSB_ERROR_INVALID_PARAM` on submit or hit the 5-second await timeout, neither of which reflects real iso overhead. Rather than extending Leroy's workaround further, the cleaner path is to wait for WASIp3, where `stream<u8>` primitives will let the guest consume isochronous data natively without needing guest threads at all. This is discussed in the Evaluation and Future Work chapters of the thesis.
 
 The `w_iso.c` and `w_iso.rs` source files are kept in the repository as a reference for that future WASIp3 implementation. See Future Work §16.1.2 in the thesis for the full story.
 
@@ -53,7 +53,7 @@ You need all three devices for a full run. Individual workloads can be run separ
 | WASI-USB Loopback (`cafe:4002`) | Raspberry Pi Pico 2 (RP2350) running the USB identity firmware |
 | PS5 DualSense or DualShock 4 | Disconnect from wireless mode first |
 
-The bulk workload requires that no kernel driver holds the SanDisk. On macOS, `IOUSBMassStorageClass` stays attached after unmounting; run `sudo usbconfig -u ugen<N> detach_kernel_driver` or claim the interface manually before the run. See the note in the main README.
+The bulk workload requires that no kernel driver holds the SanDisk. On macOS, `IOUSBMassStorageClass` stays attached after unmounting; running the benchmark with `sudo` allows libusb to claim the interface via IOKit directly. See the note in the main README.
 
 ---
 
@@ -108,7 +108,7 @@ cargo build --release --bins --target wasm32-wasip2 \
 
 The bulk binaries do a BOT Reset followed by `clear_halt` on both bulk endpoints at startup, which is enough to recover from most stuck states (a previous run interrupted mid-transfer, an aborted Ctrl-C, etc.). The harness's prep step also unmounts the drive and unbinds `usb-storage` before each bulk run.
 
-If you still see sustained `CBW write failed: r=-1` across all five conditions, the drive's internal firmware is wedged at a level that no host-side reset can fix. The only reliable recovery is a physical unplug, **wait 15 seconds**, and plug back in. The 15 seconds isn't superstition — internal caps on USB sticks keep the firmware powered during short unplugs, so a quick yank-and-replug doesn't actually power-cycle anything.
+If you still see sustained `CBW write failed: r=-1` across all five conditions, the drive's internal firmware is wedged at a level that no host-side reset can fix. The only reliable recovery is a physical unplug, **wait 15 seconds**, and plug back in. The 15 seconds isn't superstition: internal caps on USB sticks keep the firmware powered during short unplugs, so a quick yank-and-replug doesn't actually power-cycle anything.
 
 ### Quick sanity check
 
@@ -118,11 +118,11 @@ just bench-smoke       # 1 iteration per cell, all conditions and workloads
 
 ### Why these iteration counts?
 
-The defaults — warmup=250, bulk=1500, ctrl=10000, int=10000 — aren't arbitrary. Leroy (2022) ran up to 1 million iterations for pure latency measurements, but that was a tight loopback on a local network; USB round-trips are two to three orders of magnitude slower. After a few exploratory runs I looked at how quickly the standard error of the mean (SEM) stabilised:
+The defaults (warmup=250, bulk=1500, ctrl=10000, int=10000) aren't arbitrary. Leroy (2025) ran 1 million iterations, but those were single-block (512-byte) bulk reads on a USB thumb drive, where each transfer is tiny and fast; the workloads here move far more per iteration (a 64 KiB bulk read, or a full control/interrupt round-trip), so each iteration costs more wall-clock time and the SEM converges much sooner. After a few exploratory runs I looked at how quickly the standard error of the mean (SEM) stabilised:
 
 - **ctrl and int (10 000 iterations):** Round-trip time converges to a stable SEM within the first few hundred iterations. 10 000 gives a comfortable margin, keeps a single condition under two minutes, and matches typical HCI latency benchmark practice. Going to 1 million would take ~4 hours per condition for no meaningful gain in precision.
-- **bulk (1 500 iterations):** Each iteration is a 512 KB SCSI READ(10) — 1 500 × 512 KB ≈ 750 MB of actual USB traffic per condition. The 512 KB size is deliberate: USB SuperSpeed bulk has a max packet size of 1 024 B and a typical burst depth of 16, giving 16 × 1 024 B = 16 KiB per physical transaction. 512 KB = 32 bursts, which amortises per-transfer latency well without blowing the guest's linear-memory budget. Throughput stabilises after roughly 200–300 iterations once the drive's internal cache effects average out. 1 500 gives several full cache-flush cycles while keeping the run under five minutes per condition.
-- **warmup (250 iterations):** The first ~50 iterations show elevated latency in every condition (JIT warmup for WASM, page-fault storms for native). For bulk specifically, the SanDisk's internal cache distorts throughput for roughly the first 200 iterations (250 × 512 KB ≈ 125 MB of warmup reads gets it to steady state). 250 covers both effects across all three workloads; the logged data starts only after warmup completes.
+- **bulk (1 500 iterations):** Each iteration is a 64 KiB SCSI READ(10) (128 blocks of 512 B), giving approximately 94 MB of actual USB traffic per condition across 1 500 iterations. The 64 KiB size is large enough to amortise per-transfer overhead while remaining within a reasonable guest linear-memory budget. Throughput stabilises after roughly 200–300 iterations once the drive's internal cache effects average out. 1 500 gives several full cache-flush cycles while keeping the run under five minutes per condition.
+- **warmup (250 iterations):** The first ~50 iterations show elevated latency in every condition (JIT warmup for WASM, page-fault storms for native). For bulk specifically, the SanDisk's internal cache distorts throughput for roughly the first 200 iterations (250 × 64 KiB ≈ 16 MB of warmup reads gets it to steady state). 250 covers both effects across all three workloads; the logged data starts only after warmup completes.
 
 All five conditions run sequentially with the same counts, so any remaining device-side variance (temperature, internal wear-levelling) affects all conditions equally.
 
@@ -180,13 +180,13 @@ python3 benchmarks/analyze.py results/<dir>/ --plots out/figs/  # save figures
 
 The analysis script produces:
 
-1. Correctness table — SHA-256 checksums per workload across all 5 conditions (they should match)
-2. Throughput bar chart — MB/s per condition for W-bulk
-3. RTT violin plots — latency distribution for W-ctrl and W-int
-4. CPU usage — user vs. sys time per condition
-5. Memory usage — RSS peak + WASM linear memory (WASM conditions only)
-6. Wrapper overhead — C4 vs C5 comparison (how much rusb adds)
-7. Statistical tests — Mann-Whitney U + Cliff's delta for each pair
+1. Correctness table: SHA-256 checksums per workload across all 5 conditions (they should match)
+2. Throughput bar chart: MB/s per condition for W-bulk
+3. RTT violin plots: latency distribution for W-ctrl and W-int
+4. CPU usage: user vs. sys time per condition
+5. Memory usage: RSS peak + WASM linear memory (WASM conditions only)
+6. Wrapper overhead: C4 vs C5 comparison (how much rusb adds)
+7. Statistical tests: Mann-Whitney U + Cliff's delta for each pair
 
 ---
 
@@ -270,7 +270,7 @@ C3 and C4 compile the same source, only the build configuration differs.
 
 **`LIBUSB_ERROR_ACCESS` / Permission denied**: USB access requires root. Run with `sudo`.
 
-**SanDisk bulk failures on macOS**: `IOUSBMassStorageClass` stays attached after unmounting. Detach it with `sudo usbconfig -u ugen<N> detach_kernel_driver` before the run.
+**SanDisk bulk failures on macOS**: `IOUSBMassStorageClass` stays attached after unmounting. Running the benchmark with `sudo` allows libusb to claim the interface via IOKit directly.
 
 **SanDisk bulk failures even on Linux**: The drive may be in a stuck BBB state from a previous failed transfer. Unplug for ~15 seconds to let it reset. The `run.sh` prep automatically unmounts and unbinds `usb-storage`, but it can't fix a stuck drive.
 

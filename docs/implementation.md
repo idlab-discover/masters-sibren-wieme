@@ -1,4 +1,4 @@
-# Implementation — what was built and why
+# Implementation: what was built and why
 
 This document covers the concrete contributions. For each one it explains what the problem was, why this particular approach was chosen, and where to find the code.
 
@@ -12,7 +12,7 @@ The starting point is the prior work of Wouter Hennen and Warre Dujardin (initia
 
 | # | Contribution | Files |
 |---|--------------|-------|
-| 1 | Backend abstraction (`HostUsbBackend` trait) | `usb-wasi-host/src/usb_backend.rs` |
+| 1 | Backend refactor: libusb FFI extracted from `main.rs` into a `HostUsbBackend` trait | `usb-wasi-host/src/usb_backend.rs` |
 | 2 | Isochronous transfer API + flat-buffer strategy | `wit/transfers.wit`, `usb-wasi-host/src/main.rs` |
 | 3 | Resource-lifecycle correctness (3 critical bug fixes) | `usb-wasi-host/src/main.rs`, `libusb-wasi/libusb/os/wasi_usb.c` |
 | 4 | Host instrumentation (`instrument.rs`) | `usb-wasi-host/src/instrument.rs` |
@@ -22,15 +22,15 @@ The starting point is the prior work of Wouter Hennen and Warre Dujardin (initia
 
 ---
 
-## 1. Backend Abstraction — `HostUsbBackend` Trait
+## 1. Backend Abstraction: `HostUsbBackend` Trait
 
 ### The problem
 
-In the inherited host, libusb FFI calls were inlined throughout `main.rs`. This made it impossible to swap backends for the libusb-vs-rusb thesis question, impossible to mock USB without real hardware, and left no clean place for cross-cutting concerns like capability filtering and descriptor flattening.
+In the inherited host (Leroy's `usb-wasi-host`), all libusb FFI calls were inlined directly in `main.rs`, alongside the ResourceTable handling, the allow-list filter, and the transfer logic. With everything in one file there was no clean seam to mock USB without real hardware, and cross-cutting concerns like capability filtering and descriptor flattening had no natural home.
 
 ### The approach
 
-A trait `HostUsbBackend` (in `usb-wasi-host/src/usb_backend.rs`) defines every OS-level USB operation the host needs. `LibusbBackend` implements it via `libusb1-sys`. The host stores `Box<dyn HostUsbBackend>` in `MyState` and never references `libusb1_sys` outside the trait impl.
+This thesis extracts that OS-level USB code out of `main.rs` into a trait `HostUsbBackend` (in `usb-wasi-host/src/usb_backend.rs`); Leroy's existing libusb logic moves into a single `LibusbBackend` implementation. The host stores `Box<dyn HostUsbBackend>` in `MyState` and never references `libusb1_sys` outside the trait impl. This is mostly a reorganisation of existing code behind a trait boundary rather than new functionality: it isolates the FFI, gives capability filtering and descriptor flattening one clear home, and leaves a seam for a mock or future backend.
 
 ```rust
 pub trait HostUsbBackend: Send + Sync {
@@ -57,7 +57,7 @@ The allow-list is filtered inside `list_devices` rather than higher up, so a dis
 
 The inherited WIT supported control, bulk, and interrupt transfers, but not isochronous. Adding it required answering three questions: how does the guest specify "N packets of size S each"; how are per-packet statuses reported; and how are variable-actual-length packets returned across the WASI ABI, which is more restricted than native libusb?
 
-### The approach — flat-buffer + sidecar metadata
+### The approach: flat-buffer + sidecar metadata
 
 ```wit
 enum iso-packet-status {
@@ -100,7 +100,7 @@ for pkt in &result.packets {
 
 ### Why `iso_packet_results` is `Arc<Mutex<Option<…>>>`
 
-The C callback runs on the libusb event thread; `await_transfer` runs on the Tokio main thread. The `Option` is `None` until the callback fires, then `Some(vec)`. `await_transfer` calls `.take()`, leaving `None` — so the cell resets for any re-submit on the same `UsbTransfer`.
+The C callback runs on the libusb event thread; `await_transfer` runs on the Tokio main thread. The `Option` is `None` until the callback fires, then `Some(vec)`. `await_transfer` calls `.take()`, leaving `None`, so the cell resets for any re-submit on the same `UsbTransfer`.
 
 ---
 
@@ -114,7 +114,7 @@ Three bugs in the inherited code showed up when running real workloads. They're 
 
 **Root cause**: `await-transfer` is declared `borrow<transfer>` in the WIT. Wasmtime allocates a temporary slot M in the ResourceTable, distinct from the owned slot K from `new-transfer`. After the call returns, Wasmtime frees slot M itself.
 
-The buggy implementation called `self.table.delete(self_)` inside `await_transfer`, freeing slot M from underneath Wasmtime. After enough ISO transfers, the freed slot index coincided with the OutputStream's slot. The next `eprintln!` found a `UsbTransfer` there instead — hence "resource is of another type."
+The buggy implementation called `self.table.delete(self_)` inside `await_transfer`, freeing slot M from underneath Wasmtime. After enough ISO transfers, the freed slot index coincided with the OutputStream's slot. The next `eprintln!` found a `UsbTransfer` there instead; hence "resource is of another type."
 
 **Fix**: remove the `table.delete` call entirely. The owned slot K is cleaned up by `HostTransfer::drop` when the guest drops the resource.
 
@@ -165,13 +165,13 @@ fn drop(&mut self, self_: Resource<UsbTransfer>) -> Result<(), Error> {
 | In flight | `false` | `Some` | cancel (callback will free) |
 | Allocated only | `false` | `None` | free directly |
 
-Async resource cleanup is not symmetric with allocation. A transfer may have already completed, may be in flight, or may never have been submitted — and the Drop path has to handle all three without races.
+Async resource cleanup is not symmetric with allocation. A transfer may have already completed, may be in flight, or may never have been submitted, and the Drop path has to handle all three without races.
 
 ### 3.3 LIBUSB_ERROR_BUSY on tight ISO loops
 
 **Symptom**: C2/C4 isochronous benchmark fails on iteration #2 with `LIBUSB_ERROR_BUSY`. A single re-used `libusb_transfer` can't be re-submitted.
 
-**Root cause**: the inherited `wasi_usb.c` called `usbi_handle_transfer_completion()` synchronously from inside `wasm_submit_transfer` — before libusb's core had a chance to set `IN_FLIGHT`. The sequence in `libusb/io.c` is:
+**Root cause**: the inherited `wasi_usb.c` called `usbi_handle_transfer_completion()` synchronously from inside `wasm_submit_transfer`, before libusb's core had a chance to set `IN_FLIGHT`. The sequence in `libusb/io.c` is:
 
 ```
 libusb_submit_transfer():
@@ -199,15 +199,15 @@ list_for_each_entry(itransfer, &ctx->flying_transfers, list, ...) {
 }
 ```
 
-A synchronous backend in an async-by-design host is a mismatch. The fix is the standard "defer to the event loop" pattern, but spotting the bug requires knowing that `IN_FLIGHT` is set *after* the backend returns — documented in libusb but easy to miss.
+A synchronous backend in an async-by-design host is a mismatch. The fix is the standard "defer to the event loop" pattern, but spotting the bug requires knowing that `IN_FLIGHT` is set *after* the backend returns, which is documented in libusb but easy to miss.
 
 ---
 
-## 4. Instrumentation — `instrument.rs`
+## 4. Instrumentation: `instrument.rs`
 
 The thesis evaluation needs per-call latency attribution: how much of the total transfer time is host-side overhead vs. USB bus time vs. Wasmtime boundary crossing. Without per-call data, the WASI overhead claim is unfalsifiable.
 
-### Approach — RAII trace guard
+### Approach: RAII trace guard
 
 ```rust
 pub struct CallTrace {
@@ -256,7 +256,7 @@ On Linux, `/proc/self/status` exposes `voluntary_ctxt_switches` and `nonvoluntar
 
 C4 is Rust rusb code compiled to `wasm32-wasip2`. The obvious approach would be to fork `rusb` and `libusb1-sys`, but that means maintaining patches against two upstream crates indefinitely.
 
-### The approach — pkg-config redirection
+### The approach: pkg-config redirection
 
 `libusb1-sys`'s `build.rs` probes `pkg-config` to find `libusb-1.0`. By setting `PKG_CONFIG_LIBDIR` to point at a controlled sysroot with a custom `.pc` file, the probe finds `libusb-wasi.a` instead of the host's `libusb-1.0.so`. No code changes to rusb or libusb1-sys.
 
@@ -306,14 +306,14 @@ The webcam guest is a concrete example of the dumb-host principle: a complex pro
 
 The guest at `usb-wasi-guest/examples/webcam/src/webcam.rs` performs:
 
-1. `list_devices()` — find the Logitech Brio 100 (`046d:094c`)
-2. `open()` — get a device handle
-3. `get_active_configuration_descriptor()` — enumerate alt-settings
-4. `claim_interface(1)` — claim the VideoStreaming interface
-5. UVC Probe (control transfer) — negotiate format, framerate, resolution
-6. UVC Commit (control transfer) — activate the stream
-7. `set_interface_altsetting(1, 1)` — enable iso endpoints
-8. Loop: `new_transfer(Isochronous, ep=0x81, buf=32 KiB, pkts=32)` → submit → await → reassemble
+1. `list_devices()`: find the Logitech Brio 100 (`046d:094c`)
+2. `open()`: get a device handle
+3. `get_active_configuration_descriptor()`: enumerate alt-settings
+4. `claim_interface(1)`: claim the VideoStreaming interface
+5. UVC Probe (control transfer): negotiate format, framerate, resolution
+6. UVC Commit (control transfer): activate the stream
+7. `set_interface_altsetting(1, 1)`: enable iso endpoints
+8. Loop: `new_transfer(Isochronous, ep, pkts=32)` → submit → await → reassemble (buffer = 32 × negotiated packet size)
 9. Frame reassembly: FID-bit tracking, MJPEG header validation
 10. `out/latest.jpg` via WASI filesystem preopen
 
@@ -322,10 +322,10 @@ The guest at `usb-wasi-guest/examples/webcam/src/webcam.rs` performs:
 ```
 byte 0:  bHeaderLength  (typically 2 or 12)
 byte 1:  bmHeaderInfo
-  bit 0: FID — Frame ID, toggles on each new frame
-  bit 1: EOF — end of frame
-  bit 6: ERR — payload error
-  bit 7: EOH — end of header
+  bit 0: FID = Frame ID, toggles on each new frame
+  bit 1: EOF = end of frame
+  bit 6: ERR = payload error
+  bit 7: EOH = end of header
 ```
 
 The guest detects frame boundaries on FID flip; payload after the header accumulates in a frame buffer until the JPEG EOI marker (`0xFF 0xD9`) or the next FID flip.
@@ -337,13 +337,13 @@ The guest detects frame boundaries on FID flip; payload after the header accumul
 | Transfer type | Isochronous | UVC mandates iso for VideoStreaming |
 | Endpoint | `0x81` (IN, alt 1) | from configuration descriptor |
 | Packets per transfer | 32 | balance between submit overhead and bus utilisation |
-| Packet size (HS) | 1024 B | `wMaxPacketSize` for USB 2.0 HS |
-| Buffer per transfer | 32 × 1024 = 32 KiB | flat buffer (§2) |
+| Packet size | `wMaxPacketSize` × high-bandwidth multiplier (up to 3072 B) | read from the endpoint descriptor; the guest selects the alt-setting with the largest effective packet size |
+| Buffer per transfer | 32 × packet size (e.g. 32 × 3072 = 96 KiB on the Brio) | flat buffer (§2) |
 | Frame rate | 30 fps | UVC negotiated |
 
-The host's `main.rs` doesn't parse UVC headers, doesn't understand frame boundaries, doesn't decode MJPEG. It only forwards raw bytes between the iso descriptor array and the WIT boundary. All protocol logic lives in `webcam.rs` (~700 lines inside the Wasm sandbox).
+The host's `main.rs` doesn't parse UVC headers, doesn't understand frame boundaries, doesn't decode MJPEG. It only forwards raw bytes between the iso descriptor array and the WIT boundary. All protocol logic lives in `webcam.rs` (~540 lines inside the Wasm sandbox).
 
-**Platform note**: works end-to-end on Linux (`libusb_detach_kernel_driver` releases `uvcvideo`). On macOS, the UVC interface is held exclusively by `IOUSBDeviceFamily` and iso transfers time out at 5 s with 0 bytes. This is not a framework limitation — native libusb has the same restriction on macOS.
+**Platform note**: works end-to-end on Linux (`libusb_detach_kernel_driver` releases `uvcvideo`). On macOS, the UVC interface is held exclusively by `IOUSBDeviceFamily` and iso transfers time out at 5 s with 0 bytes. This is not a framework limitation; native libusb has the same restriction on macOS.
 
 ---
 
@@ -386,7 +386,7 @@ The same C source compiles for C1 and C2 (only the link target differs). The sam
 
 ## See also
 
-- [architecture.md](./architecture.md) — system as a whole
-- [benchmarking.md](./benchmarking.md) — C1-C5 evaluation matrix and methodology
-- [compiling.md](./compiling.md) — how to build everything
-- [thesis.md](./thesis.md) — chapter mapping
+- [architecture.md](./architecture.md): system as a whole
+- [benchmarking.md](./benchmarking.md): C1-C5 evaluation matrix and methodology
+- [compiling.md](./compiling.md): how to build everything
+- [thesis.md](./thesis.md): chapter mapping
