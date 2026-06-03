@@ -1,4 +1,4 @@
-# Thesis — context, scope and chapter mapping
+# Thesis: context, scope and chapter mapping
 
 This document links the codebase to the master's thesis manuscript: which
 chapter discusses which piece of code, and which docs in this repo support
@@ -16,12 +16,12 @@ The thesis manuscript itself lives under `Masterproef_Sibren_Overleaf/`
 Cyber-Physical IoT**
 
 ### Author
-Sibren Wieme - Master of Science in Computer Science Engineering,
+Sibren Wieme - Master of Science in Information Engineering Technology,
 Faculty of Engineering and Architecture, Ghent University, 2025-2026.
 
-### Promotors and supervisors
-- **Promotors**: Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
-- **Supervisors**: ing. Michiel Vankenhove, Friedrich Vandenberghe
+### Supervisors and Counsellors
+- **Supervisors**: Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
+- **Counsellors**: ing. Michiel Van Kenhove, Friedrich Vandenberghe
 
 ### Position in the WASI-USB programme
 This work continues a sequence of master's theses on USB-over-WASI at IDLab
@@ -30,8 +30,8 @@ Discover:
 | # | Author | Year | Contribution |
 |---|--------|------|--------------|
 | 1+2 | Wouter Hennen + Warre Dujardin | 2024 | Initial WIT-based host runtime; control + bulk transfers |
-| 3 | Robbe Leroy | 2025 | `libusb-wasi.a` — WASI backend inside libusb |
-| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend abstraction; UVC CPS workload; C1–C5 benchmark evaluation** |
+| 3 | Robbe Leroy | 2025 | `libusb-wasi.a`, the WASI backend inside libusb |
+| **4** | **Sibren Wieme** | **2026** | **Isochronous extension; backend refactor (`HostUsbBackend` trait); UVC CPS workload; C1–C5 benchmark evaluation** |
 
 ---
 
@@ -62,10 +62,10 @@ this repo and a corresponding section in the manuscript:
 | # | Claim | Code | Manuscript section |
 |---|-------|------|---------------------|
 | 1 | Isochronous transfer API extending WIT with flat-buffer strategy | `wit/transfers.wit`, `usb-wasi-host/src/main.rs` (callback) | Ch 4 §4.3, Ch 5 §5.2 |
-| 2 | Dual-backend host runtime via `HostUsbBackend` trait | `usb-wasi-host/src/usb_backend.rs` | Ch 4 §4.4, Ch 5 §5.3 |
+| 2 | Host backend refactored behind a `HostUsbBackend` trait (single `LibusbBackend` impl) | `usb-wasi-host/src/usb_backend.rs` | Ch 4 §4.4, Ch 5 §5.3 |
 | 3 | rusb→WASM cross-compile (no upstream forks) | `sysroot-wasi/`, `benchmarks/build-c4.sh` | Ch 5 §5.4 |
 | 4 | UVC webcam CPS workload (entire UVC stack in Wasm) | `usb-wasi-guest/examples/webcam/` | Ch 6 §6.3, Ch 7 §7.2 |
-| 5 | Five-condition (C1-C5) systematic benchmark evaluation | `benchmarks/`, `bench/run.sh`, `bench/analyze.py` | Ch 6 §6.4, Ch 7 §7.1 |
+| 5 | Five-condition (C1-C5) systematic benchmark evaluation | `benchmarks/`, `benchmarks/run.sh`, `benchmarks/analyze.py` | Ch 6 §6.4, Ch 7 §7.1 |
 
 ---
 
@@ -196,9 +196,9 @@ plantuml -tpdf diagrams/*.puml
 
 ## 7. Acknowledgements
 
-**Promotors:** Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
+**Supervisors:** Prof. Dr. Bruno Volckaert, Dr. Merlijn Sebrechts
 
-**Supervisors:** ing. Michiel Vankenhove, Friedrich Vandenberghe
+**Counsellors:** ing. Michiel Van Kenhove, Friedrich Vandenberghe
 
 **Predecessors** (the thesis students who built what this work extends):
 Wouter Hennen, Warre Dujardin, Robbe Leroy
